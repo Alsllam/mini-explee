@@ -7,18 +7,44 @@ Course lessons used here:
   2.2 Responses API     - a message list with several content parts
   2.5 Structured Outputs- text_format=CompanyProfile, no JSON parsing by hand
   3.2 Vision            - the homepage screenshot as an input_image part
-  4.3 Built-in tools    - optional web_search (OpenAI only, not on Azure)
+  4.3 Built-in tools    - web="openai": OpenAI's own web_search (not on Azure)
+  4.2 Function calling  - web="tavily": our search_web() tool, works on Azure too
 """
 from __future__ import annotations
 
 import base64
+import json
 import mimetypes
 from pathlib import Path
 
 import config
 from core.client import ask
 from core.schemas import CompanyProfile
+from core.search import format_results, search_web, tavily_key
 from core.web import Page, fetch_page
+
+# Most searches the model may request before it must write the profile.
+MAX_SEARCH_ROUNDS = 3
+
+# Function tool description (lesson 4.2). The model never sees our Python code,
+# only this JSON: the name, what it is for, and the arguments it takes.
+SEARCH_TOOL = {
+    "type": "function",
+    "name": "search_web",
+    "description": (
+        "Search the web for facts that are not on the company website, "
+        "such as competitors or what others say about the company."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query, 2-8 words, e.g. 'Lucidya competitors'"}
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
 
 INSTRUCTIONS = """You are a B2B market analyst.
 You receive the text of a company's website, and sometimes a screenshot of it.
@@ -33,10 +59,33 @@ Rules:
 """
 
 WEB_SEARCH_NOTE = """
-You also have a web_search tool. Use it at most twice: once to confirm what the
+You can also search the web. Search at most twice: once to confirm what the
 company does, once to find its main competitors. List competitors only if a
-search result names them.
+search result names them, and put the URLs you used in "sources".
 """
+
+
+def resolve_web_mode(web: str | None) -> str | None:
+    """Pick how to search: None (no search), 'tavily' or 'openai'.
+
+    'auto' prefers Tavily when TAVILY_API_KEY is set, because it works on any
+    provider; otherwise it falls back to OpenAI's built-in tool.
+    """
+    if web in (None, False, "", "none"):
+        return None
+    if web == "auto":
+        web = "tavily" if tavily_key() else "openai"
+    if web == "openai" and config.IS_AZURE:
+        raise ValueError(
+            "The built-in web_search tool is not available on Azure OpenAI. "
+            "Add TAVILY_API_KEY to .env and use --web tavily "
+            "(see docs/step-01b-web-search.md)."
+        )
+    if web == "tavily" and not tavily_key():
+        raise ValueError("TAVILY_API_KEY is not set in .env.")
+    if web not in ("tavily", "openai"):
+        raise ValueError(f"Unknown web mode {web!r}. Use tavily, openai or auto.")
+    return web
 
 
 def image_part(path: str | Path) -> dict:
@@ -69,39 +118,103 @@ def analyze_company(
     url: str,
     *,
     screenshot: str | Path | None = None,
-    use_web_search: bool = False,
+    web: str | None = None,
     page: Page | None = None,
     client=None,
-) -> tuple[CompanyProfile, object]:
-    """Research one company. Returns (profile, raw response).
+    search=search_web,
+) -> tuple[CompanyProfile, object, list[dict]]:
+    """Research one company. Returns (profile, last response, searches made).
 
-    page/client are optional so tests can pass a ready Page and a fake client.
+    web    : None | "auto" | "tavily" | "openai"  (see resolve_web_mode)
+    page/client/search are injectable so tests run offline.
     """
-    if use_web_search and config.IS_AZURE:
-        raise ValueError(
-            "web_search is not available on Azure OpenAI. Run without --web, "
-            "or use an OpenAI key (see docs/step-01-company-analyzer.md)."
-        )
-
+    mode = resolve_web_mode(web)
     page = page or fetch_page(url)
 
-    instructions = INSTRUCTIONS
-    extra: dict = {}
-    if use_web_search:
-        instructions += WEB_SEARCH_NOTE
-        extra["tools"] = [{"type": "web_search"}]
+    instructions = INSTRUCTIONS + (WEB_SEARCH_NOTE if mode else "")
+    input_items = build_input(page, screenshot)
 
-    response = ask(
-        build_input(page, screenshot),
-        task="smart",
-        instructions=instructions,
-        text_format=CompanyProfile,
-        client=client,
-        **extra,
-    )
+    if mode == "openai":
+        # Lesson 4.3: one call; OpenAI runs the searches on its side.
+        response = ask(
+            input_items,
+            task="smart",
+            instructions=instructions,
+            text_format=CompanyProfile,
+            tools=[{"type": "web_search"}],
+            client=client,
+        )
+        searches = [
+            {"query": getattr(getattr(item, "action", None), "query", ""), "results": []}
+            for item in response.output
+            if item.type == "web_search_call"
+        ]
+    elif mode == "tavily":
+        # Lesson 4.2: the model asks, our code searches, we send results back.
+        response, searches = _run_search_loop(input_items, instructions, client, search)
+    else:
+        response = ask(
+            input_items,
+            task="smart",
+            instructions=instructions,
+            text_format=CompanyProfile,
+            client=client,
+        )
+        searches = []
 
     profile = response.output_parsed
     if profile is None:
         # The model refused or ran out of tokens before finishing the JSON.
         raise RuntimeError(f"No structured output. Status: {getattr(response, 'status', '?')}")
-    return profile, response
+    return profile, response, searches
+
+
+def _run_search_loop(input_items, instructions, client, search):
+    """The function-calling loop (lesson 4.2).
+
+    Each round: send the conversation + the tool description. If the model
+    answers with function_call items, run them, append the results, repeat.
+    If it answers with the profile, we are done.
+    """
+    items = list(input_items)
+    searches: list[dict] = []
+
+    for round_no in range(MAX_SEARCH_ROUNDS + 1):
+        last_round = round_no == MAX_SEARCH_ROUNDS
+        response = ask(
+            items,
+            task="smart",
+            instructions=instructions,
+            text_format=CompanyProfile,
+            tools=[SEARCH_TOOL],
+            # On the last round forbid more searches, so the model must answer.
+            tool_choice="none" if last_round else "auto",
+            client=client,
+        )
+
+        calls = [item for item in response.output if item.type == "function_call"]
+        if not calls:
+            return response, searches
+
+        for call in calls:
+            # 1) Echo the model's request back into the history, as plain data.
+            items.append(
+                {
+                    "type": "function_call",
+                    "call_id": call.call_id,
+                    "name": call.name,
+                    "arguments": call.arguments,
+                }
+            )
+            # 2) Run it and attach the result with the SAME call_id.
+            query = json.loads(call.arguments).get("query", "")
+            try:
+                results = search(query)
+                output = format_results(query, results)
+            except Exception as err:  # tell the model instead of crashing
+                results, output = [], f"Search failed: {type(err).__name__}: {err}"
+            print(f"[search] {query!r} -> {len(results)} results")
+            searches.append({"query": query, "results": results})
+            items.append({"type": "function_call_output", "call_id": call.call_id, "output": output})
+
+    return response, searches

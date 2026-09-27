@@ -33,6 +33,13 @@ else:
     if "azure" in base and not base.rstrip("/").endswith("/openai/v1"):
         print("WARNING        : Azure URL should end with /openai/v1/")
 
+tavily = os.getenv("TAVILY_API_KEY") or ""
+if not tavily or tavily == "tvly-...":
+    print("Tavily key     : not set (only needed for --web tavily)")
+else:
+    ok = "ok" if tavily.startswith("tvly-") else "WARNING: Tavily keys start with tvly-"
+    print(f"Tavily key     : {tavily[:5]}*** ({len(tavily)} chars) {ok}")
+
 for task, model in config.MODELS.items():
     print(f"Model [{task:9}]:", model)
 
