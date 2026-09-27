@@ -39,6 +39,7 @@ def sample_profile():
         competitors=[],
         language="mixed",
         evidence=["cut fuel costs by 20%"],
+        sources=[],
         confidence="medium",
     )
 
@@ -53,7 +54,7 @@ class FakeClient:
         usage = SimpleNamespace(input_tokens=900, output_tokens=150,
                                 input_tokens_details=SimpleNamespace(cached_tokens=0))
         return SimpleNamespace(id="resp_1", output_parsed=sample_profile(),
-                               status="completed", usage=usage)
+                               status="completed", usage=usage, output=[])
 
 
 @pytest.fixture(autouse=True)
@@ -94,9 +95,10 @@ def test_analyze_sends_structured_request():
     fake = FakeClient()
     page = parse_html(SAMPLE_HTML, "https://acme.example")
 
-    profile, _ = researcher.analyze_company("https://acme.example", page=page, client=fake)
+    profile, _, searches = researcher.analyze_company("https://acme.example", page=page, client=fake)
 
     assert profile.name == "Acme Logistics"
+    assert searches == []
     [call] = fake.calls
     assert call["text_format"] is CompanyProfile
     assert call["model"] == config.model_for("smart")
@@ -121,27 +123,37 @@ def test_screenshot_becomes_base64_image_part(tmp_path):
     assert base64.b64decode(encoded) == b"\x89PNG fake bytes"
 
 
-def test_web_search_adds_tool_on_openai(monkeypatch):
+def test_web_openai_adds_builtin_tool(monkeypatch):
     monkeypatch.setattr(config, "IS_AZURE", False)
     fake = FakeClient()
     page = parse_html(SAMPLE_HTML, "https://acme.example")
 
-    researcher.analyze_company("x", page=page, client=fake, use_web_search=True)
+    researcher.analyze_company("x", page=page, client=fake, web="openai")
 
     assert fake.calls[0]["tools"] == [{"type": "web_search"}]
-    assert "web_search tool" in fake.calls[0]["instructions"]
+    assert "search the web" in fake.calls[0]["instructions"]
 
 
-def test_web_search_refused_on_azure(monkeypatch):
+def test_web_openai_refused_on_azure(monkeypatch):
     monkeypatch.setattr(config, "IS_AZURE", True)
     with pytest.raises(ValueError, match="not available on Azure"):
-        researcher.analyze_company("x", page=None, client=FakeClient(), use_web_search=True)
+        researcher.analyze_company("x", page=None, client=FakeClient(), web="openai")
+
+
+def test_web_auto_prefers_tavily_when_key_set(monkeypatch):
+    monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")
+    monkeypatch.setattr(config, "IS_AZURE", True)
+    assert researcher.resolve_web_mode("auto") == "tavily"
+    monkeypatch.delenv("TAVILY_API_KEY")
+    with pytest.raises(ValueError):
+        researcher.resolve_web_mode("auto")  # falls back to openai, refused on Azure
+    assert researcher.resolve_web_mode(None) is None
 
 
 def test_missing_parsed_output_raises():
     fake = FakeClient()
     fake.responses.parse = lambda **p: SimpleNamespace(
-        id="r", output_parsed=None, status="incomplete",
+        id="r", output_parsed=None, status="incomplete", output=[],
         usage=SimpleNamespace(input_tokens=1, output_tokens=1, input_tokens_details=None))
     page = parse_html(SAMPLE_HTML, "https://acme.example")
 

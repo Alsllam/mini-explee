@@ -34,6 +34,9 @@ class CompanyProfile(BaseModel):
     evidence: list[str] = Field(
         description="2-5 short quotes copied from the page that support the analysis."
     )
+    sources: list[str] = Field(
+        description="URLs of web search results you actually used. Empty list if you did not search."
+    )
     confidence: Literal["high", "medium", "low"] = Field(
         description="low if the page had little text or was mostly images/scripts."
     )

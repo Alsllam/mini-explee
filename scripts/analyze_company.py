@@ -4,7 +4,9 @@ Run from the project root:
     python -m scripts.analyze_company https://example.com
     python -m scripts.analyze_company example.com --screenshot home.png
     python -m scripts.analyze_company example.com --screenshot latest   # newest screenshot
-    python -m scripts.analyze_company example.com --web      # OpenAI only
+    python -m scripts.analyze_company example.com --web            # auto: Tavily if key, else OpenAI
+    python -m scripts.analyze_company example.com --web tavily     # our search tool (works on Azure)
+    python -m scripts.analyze_company example.com --web openai     # OpenAI built-in (not on Azure)
 """
 import argparse
 import json
@@ -21,7 +23,13 @@ parser.add_argument(
     "--screenshot",
     help="Path to a PNG/JPG screenshot of the homepage, or 'latest' for your newest screenshot",
 )
-parser.add_argument("--web", action="store_true", help="Also use the web_search tool (OpenAI only)")
+parser.add_argument(
+    "--web",
+    nargs="?",
+    const="auto",
+    choices=["auto", "tavily", "openai"],
+    help="Also search the web: tavily (any provider), openai (built-in, not Azure), auto (default)",
+)
 args = parser.parse_args()
 
 IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -62,7 +70,7 @@ if args.screenshot:
 
 url = normalize_url(args.url)
 print(f"Analyzing {url} ...")
-profile, response = analyze_company(url, screenshot=args.screenshot, use_web_search=args.web)
+profile, response, searches = analyze_company(url, screenshot=args.screenshot, web=args.web)
 
 out_dir = Path("data/output")
 out_dir.mkdir(parents=True, exist_ok=True)
@@ -72,4 +80,9 @@ out_file.write_text(profile.model_dump_json(indent=2), encoding="utf-8")
 
 print(json.dumps(profile.model_dump(), ensure_ascii=False, indent=2))
 print(f"\nSaved to {out_file}")
-print(f"Tokens: {response.usage.input_tokens} in / {response.usage.output_tokens} out")
+print(f"Tokens (last call): {response.usage.input_tokens} in / {response.usage.output_tokens} out")
+print("Every call, with its tokens, is in logs/calls.jsonl")
+if searches:
+    print(f"Searches: {len(searches)}")
+    for s_ in searches:
+        print(f"  - {s_['query']}")
