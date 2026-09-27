@@ -85,6 +85,7 @@ def ask(
     *,
     task: str = "fast",
     instructions: str | None = None,
+    text_format: type | None = None,
     client: OpenAI | None = None,
     sleep: Callable[[float], None] = time.sleep,
     **kwargs: Any,
@@ -94,6 +95,9 @@ def ask(
     input        : a string, or a list of messages (later steps use lists)
     task         : 'fast' | 'smart' | 'reasoning' -> picks the model (config.py)
     instructions : the system-level guidance for the model
+    text_format  : a Pydantic model class -> Structured Outputs (lesson 2.5).
+                   The model is forced to answer in that exact JSON shape and
+                   the result is ready as `response.output_parsed`.
     client/sleep : injectable so tests can run without a key or real waiting
     **kwargs     : any other Responses API parameter (temperature, tools, text ...)
     """
@@ -108,7 +112,10 @@ def ask(
     for attempt in range(attempts):
         started = time.monotonic()
         try:
-            response = client.responses.create(**params)
+            if text_format is not None:
+                response = client.responses.parse(text_format=text_format, **params)
+            else:
+                response = client.responses.create(**params)
         except RETRYABLE_ERRORS as err:
             if not is_retryable(err) or attempt == attempts - 1:
                 _log_call(task, model, None, started, attempt + 1, error=err)
