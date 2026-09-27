@@ -307,6 +307,7 @@ Rules:
 
 | ما تراه | السبب | الحل |
 | --- | --- | --- |
+| `Screenshot not found` | أداة القص في Windows (`Win + Shift + S`) تنسخ الصورة للحافظة فقط، أو تحفظها في `Pictures\Screenshots` | الصق الصورة في Paint واحفظها باسم `home.png` داخل مجلد المشروع، أو مرّر المسار الكامل بين علامتي تنصيص |
 | `requests.exceptions.HTTPError: 403` | الموقع يحجب الطلبات الآلية | جرّب موقعاً آخر، أو استخدم `--screenshot` وحده مع صفحة محفوظة |
 | `confidence: "low"` ونص شبه فارغ | الموقع مبني بـ JavaScript ولا يحتوي نصاً في HTML | أضف `--screenshot` ليعتمد النموذج على الصورة |
 | `BadRequestError` يذكر `json_schema` أو `text.format` | نموذج أو نشر قديم لا يدعم المخرجات المهيكلة | استخدم `gpt-4o-mini` (إصدار 2024-07-18) أو أحدث |

@@ -19,6 +19,18 @@ parser.add_argument("--screenshot", help="Path to a PNG/JPG screenshot of the ho
 parser.add_argument("--web", action="store_true", help="Also use the web_search tool (OpenAI only)")
 args = parser.parse_args()
 
+# Fail early: check the screenshot before downloading the page or paying for a call.
+if args.screenshot:
+    shot = Path(args.screenshot)
+    if not shot.is_file():
+        print(f"Screenshot not found: {shot.resolve()}")
+        print("Save the image in the project folder, or pass its full path, e.g.")
+        print('  --screenshot "C:\\Users\\<you>\\Pictures\\Screenshots\\home.png"')
+        images = sorted(p.name for p in Path.cwd().glob("*") if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"})
+        if images:
+            print("Images in this folder:", ", ".join(images))
+        raise SystemExit(1)
+
 url = normalize_url(args.url)
 print(f"Analyzing {url} ...")
 profile, response = analyze_company(url, screenshot=args.screenshot, use_web_search=args.web)
