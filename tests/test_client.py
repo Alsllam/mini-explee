@@ -93,6 +93,20 @@ def test_gives_up_after_max_retries(tmp_log):
     assert read_log(tmp_log)[0]["error"] == "RateLimitError"
 
 
+def test_no_credits_429_is_not_retried(tmp_log):
+    err = make_error(openai.RateLimitError, "You have no credits remaining.")
+    err.type, err.code = "insufficient_quota", "credit_balance_exhausted"
+    fake = FakeClient([err])
+    waits = []
+
+    with pytest.raises(openai.RateLimitError):
+        core_client.ask("hi", client=fake, sleep=waits.append)
+
+    assert len(fake.calls) == 1  # failed fast, no wasted retries
+    assert waits == []
+    assert read_log(tmp_log)[0]["attempts"] == 1
+
+
 def test_bad_request_is_not_retried(tmp_log):
     fake = FakeClient([make_error(openai.BadRequestError)])
 
