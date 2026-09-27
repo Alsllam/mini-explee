@@ -29,6 +29,10 @@ MODELS = {
 # MODELS above must be your *deployment name*, not the model id.
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL") or None
 
+# Some built-in tools (e.g. web_search, lesson 4.3) exist on OpenAI but not on
+# Azure OpenAI. Agents check this before offering them.
+IS_AZURE = bool(OPENAI_BASE_URL and "azure" in OPENAI_BASE_URL.lower())
+
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "4"))
 
 # Every API call is appended here as one JSON line (see core/client.py).
