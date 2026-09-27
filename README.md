@@ -11,6 +11,7 @@
 | 0 | التأسيس: العميل الموحّد وأول استدعاء | 1.2–1.5، 2.1، 2.2، 5.1 | [docs/step-00-setup.md](docs/step-00-setup.md) |
 | 1 | محلل الشركة | 2.2، 2.5، 3.2، 4.3 | [docs/step-01-company-analyzer.md](docs/step-01-company-analyzer.md) |
 | 1ب | البحث على الويب: أداة مدمجة مقابل استدعاء الدوال (Tavily) | 4.2، 4.3 | [docs/step-01b-web-search.md](docs/step-01b-web-search.md) |
+| 1ج | فحص التأسيس ومقاومة الهلوسة | 1.2، 2.5 | [docs/step-01c-grounding.md](docs/step-01c-grounding.md) |
 | 2 | العميل المثالي (ICP) | 2.3، 2.5، 2.6 | قريباً |
 | 3 | تقييم العملاء | 2.4، 2.5، 4.4 | قريباً |
 | 4 | كاتب الرسائل | 2.4، 3.1، 4.1، 5.2 | قريباً |

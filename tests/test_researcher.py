@@ -35,10 +35,11 @@ def sample_profile():
         one_liner="Fleet tracking software for delivery companies.",
         offering=["Fleet tracking"],
         value_props=["Lower fuel costs"],
-        target_customers=["Delivery companies"],
+        target_customers_site=["Delivery companies"],
+        target_customers_external=[],
         competitors=[],
         language="mixed",
-        evidence=["cut fuel costs by 20%"],
+        evidence=['"Acme helps delivery companies cut fuel costs by 20%."'],
         sources=[],
         confidence="medium",
     )
@@ -95,13 +96,18 @@ def test_analyze_sends_structured_request():
     fake = FakeClient()
     page = parse_html(SAMPLE_HTML, "https://acme.example")
 
-    profile, _, searches = researcher.analyze_company("https://acme.example", page=page, client=fake)
+    result = researcher.analyze_company("https://acme.example", page=page, client=fake)
+    profile = result.profile
 
     assert profile.name == "Acme Logistics"
-    assert searches == []
+    assert result.searches == []
+    # stray quote marks removed by code, then found on the page
+    assert profile.evidence == ["Acme helps delivery companies cut fuel costs by 20%."]
+    assert result.grounding.ok
     [call] = fake.calls
     assert call["text_format"] is CompanyProfile
     assert call["model"] == config.model_for("smart")
+    assert call["temperature"] == researcher.ANALYSIS_TEMPERATURE
     assert "tools" not in call
     [message] = call["input"]
     assert message["role"] == "user"

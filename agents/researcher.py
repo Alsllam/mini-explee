@@ -15,16 +15,25 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import config
 from core.client import ask
+from core.grounding import GroundingReport, check_grounding, strip_quotes
 from core.schemas import CompanyProfile
 from core.search import format_results, search_web, tavily_key
 from core.web import Page, fetch_page
 
 # Most searches the model may request before it must write the profile.
 MAX_SEARCH_ROUNDS = 3
+
+# Lower temperature = less variety between runs (lesson 1.2: outputs are not
+# deterministic). It reduces, not removes, differences. Reasoning models reject
+# this parameter: set ANALYSIS_TEMPERATURE= (empty) in .env if you use one.
+_temp = os.getenv("ANALYSIS_TEMPERATURE", "0.2").strip()
+ANALYSIS_TEMPERATURE = float(_temp) if _temp else None
 
 # Function tool description (lesson 4.2). The model never sees our Python code,
 # only this JSON: the name, what it is for, and the arguments it takes.
@@ -54,6 +63,8 @@ Rules:
 - Do not invent facts, numbers, customers or competitors.
 - If something is not in the sources, use an empty list or say so in plain words.
 - Keep every list item short (under 12 words).
+- Customer types stated on the website go in target_customers_site.
+  Customer types found ONLY in web search results go in target_customers_external.
 - Write the profile in English, even if the website is in Arabic;
   copy the evidence quotes in their original language.
 """
@@ -114,6 +125,18 @@ def build_input(page: Page, screenshot: str | Path | None = None) -> list[dict]:
     return [{"role": "user", "content": content}]
 
 
+@dataclass
+class AnalysisResult:
+    profile: CompanyProfile
+    response: object          # the last API response (for token counts)
+    searches: list[dict]      # every search made, with its results
+    grounding: GroundingReport
+
+
+def _sampling() -> dict:
+    return {} if ANALYSIS_TEMPERATURE is None else {"temperature": ANALYSIS_TEMPERATURE}
+
+
 def analyze_company(
     url: str,
     *,
@@ -122,10 +145,12 @@ def analyze_company(
     page: Page | None = None,
     client=None,
     search=search_web,
-) -> tuple[CompanyProfile, object, list[dict]]:
-    """Research one company. Returns (profile, last response, searches made).
+    strict: bool = False,
+) -> AnalysisResult:
+    """Research one company, then check its claims against the sources.
 
     web    : None | "auto" | "tavily" | "openai"  (see resolve_web_mode)
+    strict : drop evidence and competitors that the grounding check can't find
     page/client/search are injectable so tests run offline.
     """
     mode = resolve_web_mode(web)
@@ -143,6 +168,7 @@ def analyze_company(
             text_format=CompanyProfile,
             tools=[{"type": "web_search"}],
             client=client,
+            **_sampling(),
         )
         searches = [
             {"query": getattr(getattr(item, "action", None), "query", ""), "results": []}
@@ -159,6 +185,7 @@ def analyze_company(
             instructions=instructions,
             text_format=CompanyProfile,
             client=client,
+            **_sampling(),
         )
         searches = []
 
@@ -166,7 +193,25 @@ def analyze_company(
     if profile is None:
         # The model refused or ran out of tokens before finishing the JSON.
         raise RuntimeError(f"No structured output. Status: {getattr(response, 'status', '?')}")
-    return profile, response, searches
+
+    # Deterministic clean-up: code, not the model, removes stray quote marks.
+    profile.evidence = [strip_quotes(q) for q in profile.evidence]
+
+    grounding = check_grounding(
+        profile.evidence,
+        profile.competitors,
+        website_text=page.as_prompt(),
+        searches=searches,
+        # OpenAI's built-in tool doesn't give us the result texts to check against.
+        search_results_available=(mode != "openai"),
+    )
+
+    if strict:
+        profile.evidence = [c.text for c in grounding.evidence if c.found]
+        if grounding.competitors_verifiable:
+            profile.competitors = [c.text for c in grounding.competitors if c.found]
+
+    return AnalysisResult(profile, response, searches, grounding)
 
 
 def _run_search_loop(input_items, instructions, client, search):
@@ -190,6 +235,7 @@ def _run_search_loop(input_items, instructions, client, search):
             # On the last round forbid more searches, so the model must answer.
             tool_choice="none" if last_round else "auto",
             client=client,
+            **_sampling(),
         )
 
         calls = [item for item in response.output if item.type == "function_call"]
