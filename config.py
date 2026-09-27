@@ -5,10 +5,13 @@ Every agent asks this module which model to use for its kind of task.
 """
 import os
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 # Reads .env from the project root into environment variables (lesson 1.4).
-load_dotenv()
+# override=True: the project's .env wins over any OPENAI_* variable already set
+# in Windows/macOS system settings, so what you see in .env is what runs.
+ENV_FILE = find_dotenv(usecwd=True)
+load_dotenv(ENV_FILE, override=True)
 
 # Which model each kind of task uses (lesson 2.1: pick by task, not "the best one").
 MODELS = {
