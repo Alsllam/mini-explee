@@ -202,7 +202,8 @@ print(response.output_text)
 
 | الخطأ | السبب | المعالجة الموصى بها |
 | --- | --- | --- |
-| `RateLimitError` (HTTP 429) | طلبات أو رموز كثيرة في الدقيقة | انتظر ثم أعد المحاولة بتأخير متزايد |
+| `RateLimitError` (HTTP 429) بنوع `rate_limit_exceeded` | طلبات أو رموز كثيرة في الدقيقة | انتظر ثم أعد المحاولة بتأخير متزايد |
+| `RateLimitError` (HTTP 429) بنوع `insufficient_quota` | الرصيد انتهى | **لا تُعِد المحاولة**؛ أضف رصيداً أولاً |
 | `APIConnectionError` | انقطاع الشبكة قبل وصول الرد | أعد المحاولة |
 | `APITimeoutError` | لم يصل رد خلال المهلة | أعد المحاولة |
 | `InternalServerError` (HTTP 5xx) | مشكلة عند OpenAI | أعد المحاولة |
@@ -335,6 +336,29 @@ for attempt in range(attempts):
 
 صيغة JSONL (سطر JSON لكل سجل) مناسبة للسجلات لأننا نضيف في نهاية الملف دون قراءته كله. سنبني على هذا الملف لوحة التكلفة في الخطوة 6، ونقارنه بأرقام Usage API. الحقل `cached_tokens` سيبدأ يرتفع في الخطوة 3 عندما نطبق التخزين المؤقت (الدرس 2.4).
 
+**5) نوعان مختلفان من الخطأ 429:**
+
+نفس رقم الخطأ `429` له معنيان مختلفان تماماً، ونفرّق بينهما من حقل `type` و `code` في جسم الخطأ:
+
+```python
+QUOTA_ERROR_MARKERS = {"insufficient_quota", "credit_balance_exhausted"}
+
+
+def is_retryable(err: Exception) -> bool:
+    if not isinstance(err, RETRYABLE_ERRORS):
+        return False
+    if isinstance(err, RateLimitError):
+        markers = {getattr(err, "type", None), getattr(err, "code", None)}
+        if markers & QUOTA_ERROR_MARKERS:
+            return False
+    return True
+```
+
+- `rate_limit_exceeded`: أرسلت كثيراً في وقت قصير. الانتظار يحلّها، فنعيد المحاولة.
+- `insufficient_quota`: الرصيد انتهى. الانتظار لن يغيّر شيئاً، فنتوقف فوراً ونُظهر الخطأ.
+
+هذا درس عملي من الدرس 5.1: **لا يكفي النظر إلى رقم الخطأ؛ اقرأ نوعه.** النسخة الأولى من الكود كانت تعيد المحاولة 4 مرات على خطأ الرصيد، فتضيع نحو 12 ثانية دون فائدة.
+
 ### `tests/test_client.py` — اختبار بلا مفتاح
 
 عميل مزيف يرمي الأخطاء التي نحددها بالترتيب، ثم ينجح:
@@ -410,7 +434,8 @@ _client = OpenAI(base_url=config.OPENAI_BASE_URL, max_retries=0)
 | `RuntimeError: OPENAI_API_KEY is not set` | لا يوجد `.env`، أو المتغير باسم مختلف | تأكد أن الملف اسمه `.env` بالضبط في جذر المشروع |
 | `AuthenticationError` / 401 | المفتاح خاطئ أو ملغى أو فيه مسافة زائدة | انسخ المفتاح من جديد دون مسافات أو علامات تنصيص |
 | `NotFoundError` أو `BadRequestError` عن النموذج | اسم نموذج غير متاح لحسابك | شغّل `python -m scripts.list_models` وعدّل `.env` |
-| `RateLimitError` حتى بعد كل المحاولات، مع ذكر `quota` | الرصيد صفر أو لم تُضف وسيلة دفع | أضف رصيداً في لوحة Billing |
+| `RateLimitError` فوري مع `insufficient_quota` أو `credit_balance_exhausted` | الرصيد صفر أو لم تُضف وسيلة دفع | أضف رصيداً في لوحة Billing، أو استخدم Azure |
+| الخطأ يذكر `platform.openai.com` رغم أنك تستخدم Azure | `OPENAI_BASE_URL` غير مضبوط، فذهب الطلب إلى OpenAI | ضع رابط Azure في `.env` (قسم Azure أعلاه) |
 | `ModuleNotFoundError: No module named 'core'` | شغّلت الملف بمساره بدل `-m` | شغّل من جذر المشروع: `python -m scripts.hello` |
 | `pytest` غير معروف | البيئة الافتراضية غير مفعّلة | فعّلها (الخطوة 2) ثم أعد المحاولة |
 

@@ -36,6 +36,22 @@ import config
 # every time, so retrying would only waste time and money.
 RETRYABLE_ERRORS = (RateLimitError, APIConnectionError, APITimeoutError, InternalServerError)
 
+# HTTP 429 has two very different meanings, told apart by the error body:
+#   "slow down"  -> rate_limit_exceeded: wait and retry, it will pass
+#   "no money"   -> insufficient_quota: no credits left; waiting never fixes it
+QUOTA_ERROR_MARKERS = {"insufficient_quota", "credit_balance_exhausted"}
+
+
+def is_retryable(err: Exception) -> bool:
+    """True if waiting and trying again can succeed."""
+    if not isinstance(err, RETRYABLE_ERRORS):
+        return False
+    if isinstance(err, RateLimitError):
+        markers = {getattr(err, "type", None), getattr(err, "code", None)}
+        if markers & QUOTA_ERROR_MARKERS:
+            return False
+    return True
+
 _client: OpenAI | None = None
 
 
@@ -94,7 +110,7 @@ def ask(
         try:
             response = client.responses.create(**params)
         except RETRYABLE_ERRORS as err:
-            if attempt == attempts - 1:
+            if not is_retryable(err) or attempt == attempts - 1:
                 _log_call(task, model, None, started, attempt + 1, error=err)
                 raise
             wait = backoff_delay(attempt)
