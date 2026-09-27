@@ -97,12 +97,12 @@ def test_loop_runs_search_and_sends_result_back():
         return [{"title": "Rival A", "url": "https://a.example", "content": "Rival A tracks fleets"}]
 
     page = parse_html(SAMPLE_HTML, "https://acme.example")
-    profile, _, searches = researcher.analyze_company(
+    result = researcher.analyze_company(
         "x", page=page, client=model, web="tavily", search=fake_search)
 
-    assert profile.name == "Acme Logistics"
+    assert result.profile.name == "Acme Logistics"
     assert asked == ["acme competitors"]
-    assert searches[0]["query"] == "acme competitors"
+    assert result.searches[0]["query"] == "acme competitors"
 
     first, second = model.calls
     assert first["tools"][0]["name"] == "search_web"
@@ -132,8 +132,8 @@ def test_search_error_is_reported_to_model_not_raised():
         raise TimeoutError("tavily slow")
 
     page = parse_html(SAMPLE_HTML, "https://acme.example")
-    profile, _, _ = researcher.analyze_company(
+    result = researcher.analyze_company(
         "x", page=page, client=model, web="tavily", search=broken_search)
 
-    assert profile is not None
+    assert result.profile is not None
     assert "Search failed: TimeoutError" in model.calls[1]["input"][-1]["output"]

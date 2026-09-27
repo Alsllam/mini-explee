@@ -23,16 +23,22 @@ class CompanyProfile(BaseModel):
     value_props: list[str] = Field(
         description="Benefits the company claims for its customers, 1-5 short items."
     )
-    target_customers: list[str] = Field(
-        description="Who the company seems to sell to (industries, company sizes, roles). "
-        "Empty list if the page gives no hint."
+    target_customers_site: list[str] = Field(
+        description="Who the company says it sells to, according to ITS OWN WEBSITE only "
+        "(industries, company sizes, roles). Empty list if the website gives no hint."
+    )
+    target_customers_external: list[str] = Field(
+        description="Customer types mentioned ONLY by web search results, not on the website. "
+        "Empty list if you did not search or found none."
     )
     competitors: list[str] = Field(
         description="Competitor names ONLY if found in the sources. Never guess. Empty list if none."
     )
     language: Literal["ar", "en", "mixed"] = Field(description="Main language of the website.")
     evidence: list[str] = Field(
-        description="2-5 short quotes copied from the page that support the analysis."
+        description="2-5 full sentences copied WORD FOR WORD from the website text, in their "
+        "original language, that support the analysis. At least 5 words each. "
+        "Do not add quotation marks around them."
     )
     sources: list[str] = Field(
         description="URLs of web search results you actually used. Empty list if you did not search."
