@@ -49,7 +49,9 @@ def get_client() -> OpenAI:
             )
         # The SDK can retry on its own (default max_retries=2). We turn that off
         # so our own retry loop below is the only one, and we can see it work.
-        _client = OpenAI(max_retries=0)
+        # base_url=None means the default OpenAI endpoint; a URL means Azure
+        # (or any other OpenAI-compatible endpoint). See config.OPENAI_BASE_URL.
+        _client = OpenAI(base_url=config.OPENAI_BASE_URL, max_retries=0)
     return _client
 
 

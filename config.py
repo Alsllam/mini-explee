@@ -20,6 +20,12 @@ MODELS = {
     "reasoning": os.getenv("MODEL_REASONING", "gpt-4o-mini"),
 }
 
+# Where requests go. Empty = OpenAI itself (https://api.openai.com/v1).
+# For Azure OpenAI set it to https://YOUR-RESOURCE.openai.azure.com/openai/v1/
+# and put your Azure key in OPENAI_API_KEY. On Azure, every model name in
+# MODELS above must be your *deployment name*, not the model id.
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL") or None
+
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "4"))
 
 # Every API call is appended here as one JSON line (see core/client.py).

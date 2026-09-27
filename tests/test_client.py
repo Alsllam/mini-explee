@@ -111,3 +111,15 @@ def test_backoff_grows_and_is_capped():
 def test_unknown_task_kind_is_rejected():
     with pytest.raises(ValueError):
         config.model_for("turbo")
+
+
+def test_base_url_from_config_reaches_client(monkeypatch):
+    azure = "https://my-resource.openai.azure.com/openai/v1/"
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(config, "OPENAI_BASE_URL", azure)
+    monkeypatch.setattr(core_client, "_client", None)
+
+    client = core_client.get_client()
+    assert str(client.base_url) == azure
+
+    monkeypatch.setattr(core_client, "_client", None)  # don't leak into other tests
