@@ -366,6 +366,43 @@ class FakeClient:
 
 ---
 
+## استخدام Azure OpenAI بدل OpenAI
+
+المشروع يعمل مع Azure OpenAI دون تغيير أي كود؛ التغيير كله في ملف `.env`. نستخدم واجهة Azure الجديدة (v1 API) التي تقبل عميل `OpenAI()` العادي، فلا حاجة لـ `AzureOpenAI` ولا لـ `api_version`.
+
+إعدادات `.env` لـ Azure:
+
+```
+OPENAI_API_KEY=<your Azure OpenAI key>
+OPENAI_BASE_URL=https://YOUR-RESOURCE.openai.azure.com/openai/v1/
+MODEL_FAST=my-gpt4o-mini-deployment
+MODEL_SMART=my-gpt4o-mini-deployment
+MODEL_REASONING=my-gpt4o-mini-deployment
+```
+
+| الإعداد | من أين تحصل عليه في بوابة Azure |
+| --- | --- |
+| `OPENAI_API_KEY` | صفحة مورد Azure OpenAI ← Keys and Endpoint ← KEY 1 |
+| `OPENAI_BASE_URL` | نفس الصفحة ← Endpoint، ثم أضف في آخره `openai/v1/` |
+| `MODEL_*` | Azure AI Foundry ← Deployments ← عمود **Name** (اسم النشر، وليس اسم النموذج) |
+
+**أهم فرق:** في OpenAI تكتب اسم النموذج (`gpt-4o-mini`)، أما في Azure فتكتب **اسم النشر (deployment)** الذي اخترته أنت عند نشر النموذج. إذا أخطأت فيه سيظهر خطأ `NotFoundError` أو `DeploymentNotFound`.
+
+**كيف يعمل في الكود؟** `config.py` يقرأ `OPENAI_BASE_URL`، و`get_client()` يمرره للعميل:
+
+```python
+_client = OpenAI(base_url=config.OPENAI_BASE_URL, max_retries=0)
+```
+
+إذا كان المتغير فارغاً تكون القيمة `None` فيذهب الطلب إلى OpenAI، وإذا كان فيه رابط يذهب الطلب إلى Azure.
+
+**ملاحظات:**
+- سكربت `list_models` على Azure يعرض النماذج المتاحة في المنطقة، وليس عمليات النشر الخاصة بك؛ اعتمد على صفحة Deployments.
+- ميزات بعض الخطوات القادمة (مثل `web_search` و Realtime والضبط الدقيق) تختلف إتاحتها على Azure حسب المنطقة؛ سأنبّه عليها في كل خطوة.
+- رسالة `429` على Azure غالباً تعني أن حصة النشر (TPM) صغيرة؛ يمكن رفعها من إعدادات النشر.
+
+---
+
 ## أخطاء شائعة وحلولها
 
 | ما تراه | السبب | الحل |
