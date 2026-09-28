@@ -28,8 +28,13 @@ class CompanyProfile(BaseModel):
         "(industries, company sizes, roles). Empty list if the website gives no hint."
     )
     target_customers_external: list[str] = Field(
-        description="Customer types mentioned ONLY by web search results, not on the website. "
-        "Empty list if you did not search or found none."
+        description="Customer TYPES (industries, sizes, roles - not company names) mentioned ONLY "
+        "by web search results, not on the website. Empty list if you did not search or found none."
+    )
+    named_customers: list[str] = Field(
+        description="Names of real organizations the sources say are customers of this company "
+        "(logos, case studies, news). Exact names as written in the source. Never guess. "
+        "Empty list if none."
     )
     competitors: list[str] = Field(
         description="Competitor names ONLY if found in the sources. Never guess. Empty list if none."

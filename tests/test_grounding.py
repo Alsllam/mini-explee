@@ -69,7 +69,7 @@ def test_competitors_unverifiable_without_result_texts():
     report = check_grounding(evidence=[], competitors=["Neticle"], website_text=SITE,
                              searches=[], search_results_available=False)
     assert report.unverified_competitors == []  # can't judge -> no false alarm
-    assert not report.competitors_verifiable
+    assert not report.names_verifiable
 
 
 def test_report_to_dict_has_summary_fields():
@@ -77,7 +77,7 @@ def test_report_to_dict_has_summary_fields():
     data = report.to_dict()
     assert data["ok"] is False
     assert data["unverified_competitors"] == ["Neticle"]
-    assert data["evidence"][0]["found"] is False
+    assert data["evidence"][0]["status"] == "missing"
 
 
 # --- --strict in the researcher -------------------------------------------
@@ -100,6 +100,7 @@ def make_profile():
     p = sample_profile()
     p.evidence = ["Acme helps delivery companies cut fuel costs by 20%.", "Invented quote here"]
     p.competitors = ["Rival Invented"]
+    p.named_customers = ["Invented Bank"]
     return p
 
 
@@ -110,6 +111,7 @@ def test_default_keeps_items_but_flags_them():
     assert len(result.profile.evidence) == 2  # nothing removed
     assert result.grounding.unverified_evidence == ["Invented quote here"]
     assert result.grounding.unverified_competitors == ["Rival Invented"]
+    assert result.grounding.unverified_customers == ["Invented Bank"]
 
 
 def test_strict_drops_unverified_items():
@@ -118,6 +120,7 @@ def test_strict_drops_unverified_items():
 
     assert result.profile.evidence == ["Acme helps delivery companies cut fuel costs by 20%."]
     assert result.profile.competitors == []
+    assert result.profile.named_customers == []
 
 
 def test_temperature_can_be_disabled_for_reasoning_models(monkeypatch):
@@ -131,3 +134,42 @@ def test_temperature_can_be_disabled_for_reasoning_models(monkeypatch):
     researcher.analyze_company("x", page=page, client=fake)
 
     assert "temperature" not in calls[0]
+
+
+# --- fixes after the first real run on lucidya.com -------------------------
+
+SITE_CARDS = ("العميل الذكي قدّم دعمًا فوريًا ومخصصًا يعزز الرضا والكفاءة "
+              "حلول تمكّن جميع فرقك بمختلف تخصصاتها من العمل بفعالية وسرعة "
+              "رصد الإعلام تابع كل ما يُذكر")
+
+
+def test_added_final_period_is_still_exact():
+    """Website cards have no period; the model added one. Real case from lucidya.com."""
+    report = check_grounding(["قدّم دعمًا فوريًا ومخصصًا يعزز الرضا والكفاءة."], [], SITE_CARDS, [])
+    assert report.evidence[0].status == "exact"
+
+
+def test_one_added_word_is_close_not_missing():
+    """The model appended "وثقة" to a real sentence. Real case from lucidya.com."""
+    report = check_grounding(
+        ["حلول تمكّن جميع فرقك بمختلف تخصصاتها من العمل بفعالية وسرعة وثقة."], [], SITE_CARDS, [])
+    check = report.evidence[0]
+    assert check.status == "close"
+    assert check.score >= 0.8
+    assert report.unverified_evidence == []
+    assert report.close_evidence == [check.text]
+
+
+def test_sentence_of_common_words_in_wrong_order_is_missing():
+    report = check_grounding(["العمل الذكي يعزز كل الحلول مع الإعلام"], [], SITE_CARDS, [])
+    assert report.evidence[0].status == "missing"
+
+
+def test_named_customers_checked_like_competitors():
+    searches = [{"query": "lucidya clients", "results": [
+        {"title": "Lucidya case study", "url": "https://news.example/sib",
+         "content": "Saudi Investment Bank uses Lucidya to track sentiment."}]}]
+    report = check_grounding([], [], SITE_CARDS, searches,
+                             customers=["Saudi Investment Bank", "Invented Bank"])
+    assert report.customers[0].where == "https://news.example/sib"
+    assert report.unverified_customers == ["Invented Bank"]

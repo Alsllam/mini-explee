@@ -65,6 +65,8 @@ Rules:
 - Keep every list item short (under 12 words).
 - Customer types stated on the website go in target_customers_site.
   Customer types found ONLY in web search results go in target_customers_external.
+- Names of specific customer organizations go in named_customers, never in the
+  target_customers lists.
 - Write the profile in English, even if the website is in Arabic;
   copy the evidence quotes in their original language.
 """
@@ -150,7 +152,7 @@ def analyze_company(
     """Research one company, then check its claims against the sources.
 
     web    : None | "auto" | "tavily" | "openai"  (see resolve_web_mode)
-    strict : drop evidence and competitors that the grounding check can't find
+    strict : drop evidence, competitors and customers the grounding check can't find
     page/client/search are injectable so tests run offline.
     """
     mode = resolve_web_mode(web)
@@ -204,12 +206,15 @@ def analyze_company(
         searches=searches,
         # OpenAI's built-in tool doesn't give us the result texts to check against.
         search_results_available=(mode != "openai"),
+        customers=profile.named_customers,
     )
 
     if strict:
+        # "close" quotes stay: the model changed a word, it did not invent the sentence.
         profile.evidence = [c.text for c in grounding.evidence if c.found]
-        if grounding.competitors_verifiable:
+        if grounding.names_verifiable:
             profile.competitors = [c.text for c in grounding.competitors if c.found]
+            profile.named_customers = [c.text for c in grounding.customers if c.found]
 
     return AnalysisResult(profile, response, searches, grounding)
 

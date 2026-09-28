@@ -33,7 +33,7 @@ parser.add_argument(
 parser.add_argument(
     "--strict",
     action="store_true",
-    help="Drop evidence quotes and competitors the grounding check cannot find in the sources",
+    help="Drop evidence, competitors and customers the grounding check cannot find in the sources",
 )
 args = parser.parse_args()
 
@@ -95,20 +95,30 @@ if result.searches:
         print(f"  - {s_['query']}")
 
 print("\nGrounding check")
-found = sum(c.found for c in grounding.evidence)
-print(f"  Evidence found on the website : {found}/{len(grounding.evidence)}")
-for quote in grounding.unverified_evidence:
-    print(f"    NOT FOUND: {quote}")
-if not grounding.competitors_verifiable:
-    print("  Competitors                   : cannot verify (built-in search gives no result text)")
-elif grounding.competitors:
-    found = sum(c.found for c in grounding.competitors)
-    print(f"  Competitors found in sources  : {found}/{len(grounding.competitors)}")
-    for c in grounding.competitors:
-        mark = "ok " if c.found else "NOT FOUND"
-        print(f"    {mark} {c.text}" + (f"  <- {c.where}" if c.where else ""))
+MARKS = {"exact": "ok   ", "close": "close", "missing": "MISSING"}
+
+
+def show(title, checks, with_score=False):
+    if not checks:
+        return
+    found = sum(c.found for c in checks)
+    print(f"  {title}: {found}/{len(checks)} found")
+    for c in checks:
+        extra = f" ({c.score:.0%} of words)" if with_score and c.status != "exact" else ""
+        where = f"  <- {c.where}" if c.where and c.where != "website" else ""
+        print(f"    {MARKS[c.status]} {c.text}{extra}{where}")
+
+
+show("Evidence on the website", grounding.evidence, with_score=True)
+if grounding.names_verifiable:
+    show("Competitors in sources ", grounding.competitors)
+    show("Customers in sources   ", grounding.customers)
+else:
+    print("  Competitors/customers  : cannot verify (built-in search gives no result text)")
+if grounding.close_evidence:
+    print("  close = the model changed a word or two; compare with the website.")
 if args.strict and not grounding.ok:
-    print("  --strict: items NOT FOUND were removed from the saved profile.")
+    print("  --strict: MISSING items were removed from the saved profile.")
 
 print(f"\nSaved to {out_file}")
 print(f"Check saved to {report_file}")
