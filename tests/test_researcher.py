@@ -37,6 +37,7 @@ def sample_profile():
         value_props=["Lower fuel costs"],
         target_customers_site=["Delivery companies"],
         target_customers_external=[],
+        named_customers=[],
         competitors=[],
         language="mixed",
         evidence=['"Acme helps delivery companies cut fuel costs by 20%."'],

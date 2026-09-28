@@ -225,6 +225,64 @@ class AnalysisResult:
 
 ---
 
+## تحسينات بعد أول تشغيل حقيقي
+
+أول تشغيل على `lucidya.com` أعطى: المنافسون **6/6** موجودون في المصادر، لكن الاقتباسات **2/5** فقط. عند الفحص تبيّن أن معظم "الاقتباسات المفقودة" **إنذارات كاذبة من كود الفحص نفسه**، وليست هلوسة. هذا درس مهم: **أداة التحقق تحتاج هي أيضاً إلى تحقق.**
+
+### 1) علامات الترقيم
+
+بطاقات المواقع وعناوينها عادة بلا نقطة في آخرها، والنموذج يضيف نقطة لأنه يكتب "جملاً". فرق حرف واحد كان يكفي لرفض الاقتباس:
+
+| الموقع | النموذج | قبل الإصلاح |
+| --- | --- | --- |
+| `قدّم دعمًا فوريًا ومخصصًا يعزز الرضا والكفاءة` | `قدّم دعمًا فوريًا ومخصصًا يعزز الرضا والكفاءة.` | مفقود ✗ |
+
+الإصلاح في `normalize()`: كل علامة ترقيم (فئة `P` في Unicode، وتشمل `.` و `،` و `؛` و `؟` وعلامات التنصيص) تصبح مسافة:
+
+```python
+text = "".join(" " if unicodedata.category(ch).startswith("P") else ch for ch in text)
+```
+
+### 2) حالة ثالثة: "قريب"
+
+النموذج أضاف كلمة واحدة ("وثقة") في آخر جملة حقيقية. هذا ليس اقتباساً حرفياً، لكنه ليس اختراعاً أيضاً. صار لكل عنصر ثلاث حالات بدل اثنتين:
+
+| الحالة | المعنى | ماذا تفعل |
+| --- | --- | --- |
+| `exact` | موجود حرفياً (بعد التطبيع) | لا شيء |
+| `close` | 80% على الأقل من كلماته موجودة بنفس الترتيب | قارن بالموقع؛ النموذج عدّل كلمة أو اثنتين |
+| `missing` | غير موجود | راجع يدوياً؛ قد يكون مخترعاً |
+
+نقيس "القرب" بـ `SequenceMatcher` من مكتبة Python القياسية `difflib`، على مستوى **الكلمات** لا الحروف:
+
+```python
+matcher = SequenceMatcher(None, q, s, autojunk=False)
+blocks = matcher.get_matching_blocks()
+matched = sum(b.size for b in blocks)
+longest = max((b.size for b in blocks), default=0)
+return matched / len(q), longest / len(q)
+```
+
+- **`matched / len(q)`**: نسبة كلمات الاقتباس التي وُجدت بنفس الترتيب.
+- **`longest / len(q)`**: طول أطول مقطع متصل. نشترط أن يغطي نصف الاقتباس على الأقل، وإلا فقد تكون جملة "مركّبة" من كلمات شائعة متفرقة في الصفحة، وهذا ما يثبته الاختبار `test_sentence_of_common_words_in_wrong_order_is_missing`.
+- **`autojunk=False`**: افتراضياً يتجاهل `SequenceMatcher` الكلمات الكثيرة التكرار في النصوص الطويلة، مثل "في" و"من"، فيفسد القياس على صفحة كاملة.
+
+`--strict` يُبقي `close` ويحذف `missing` فقط.
+
+### 3) العملاء المعروفون `named_customers`
+
+النموذج وضع أسماء شركات (بنك الاستثمار السعودي، الراجحي...) في `target_customers_external` المخصص **لأنواع** العملاء. بدل منعه، أعطيناها حقلاً خاصاً:
+
+```python
+named_customers: list[str] = Field(
+    description="Names of real organizations the sources say are customers of this company "
+    "(logos, case studies, news). Exact names as written in the source. Never guess. "
+    "Empty list if none."
+)
+```
+
+وتُفحص مثل المنافسين تماماً، لأن ذكر عميل غير حقيقي في رسالة بريد (الخطوة 4) خطأ محرج ومضر بالسمعة.
+
 ## الاختبارات الجديدة (`tests/test_grounding.py`)
 
 | الاختبار | ماذا يثبت |
@@ -239,6 +297,10 @@ class AnalysisResult:
 | `test_default_keeps_items_but_flags_them` | الوضع الافتراضي لا يحذف شيئاً |
 | `test_strict_drops_unverified_items` | `--strict` يحذف غير الموجود فقط |
 | `test_temperature_can_be_disabled_for_reasoning_models` | إفراغ الإعداد يمنع إرسال `temperature` |
+| `test_added_final_period_is_still_exact` | حالة حقيقية من Lucidya: النقطة المضافة لا تُفشل الفحص |
+| `test_one_added_word_is_close_not_missing` | حالة حقيقية: كلمة مضافة = `close` لا `missing` |
+| `test_sentence_of_common_words_in_wrong_order_is_missing` | كلمات صحيحة بترتيب مخترع = `missing` |
+| `test_named_customers_checked_like_competitors` | العملاء يُربطون برابط مصدرهم، والمخترع يُعلَّم |
 
 ---
 
