@@ -38,6 +38,11 @@ IS_AZURE = bool(OPENAI_BASE_URL and "azure" in OPENAI_BASE_URL.lower())
 # (e.g. gpt-4o-mini), because other models reject the "reasoning" parameter.
 REASONING_EFFORT = os.getenv("REASONING_EFFORT", "medium").strip() or None
 
+# Batch API (lesson 4.4). On Azure a batch needs its OWN deployment of type
+# "Global Batch" (or "Data Zone Batch"); a Standard deployment is refused.
+# On OpenAI you can leave it empty: the "fast" model is used.
+MODEL_BATCH = os.getenv("MODEL_BATCH", "").strip() or None
+
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "4"))
 
 # Every API call is appended here as one JSON line (see core/client.py).

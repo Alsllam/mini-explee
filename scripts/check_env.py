@@ -43,6 +43,12 @@ else:
 for task, model in config.MODELS.items():
     print(f"Model [{task:9}]:", model)
 print("Reasoning      :", config.REASONING_EFFORT or "off (REASONING_EFFORT is empty)")
+if config.MODEL_BATCH:
+    print("Batch model    :", config.MODEL_BATCH)
+elif config.IS_AZURE:
+    print("Batch model    : not set (needed on Azure for step 3 --mode batch: a Global Batch deployment)")
+else:
+    print("Batch model    : same as fast")
 
 if base and key.startswith("sk-"):
     print("\nWARNING: Azure endpoint with an sk- key. Use the Azure key from 'Keys and Endpoint'.")

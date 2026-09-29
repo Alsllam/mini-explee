@@ -94,3 +94,22 @@ class ICPReport(BaseModel):
     change_summary: str = Field(
         description="'Initial proposal' the first time; after feedback, what you changed and why."
     )
+
+
+# --- Step 3: lead scoring ----------------------------------------------------
+
+class LeadScore(BaseModel):
+    """How well one lead fits the ICP - output of agents/scorer.py."""
+
+    lead_id: str = Field(description="Copy the lead_id exactly as given.")
+    segment: str = Field(
+        description="Name of the best-matching ICP segment, copied exactly, or 'none'."
+    )
+    fit_score: int = Field(description="0-100, using the scoring rubric.")
+    reasons: list[str] = Field(description="1-3 short reasons, each naming a lead field.")
+    missing_info: list[str] = Field(
+        description="Facts that would change the score if known. Empty list if none."
+    )
+    recommendation: Literal["contact", "nurture", "skip"] = Field(
+        description="contact: score >= 70. nurture: 40-69. skip: below 40."
+    )
