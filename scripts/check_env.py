@@ -42,6 +42,7 @@ else:
 
 for task, model in config.MODELS.items():
     print(f"Model [{task:9}]:", model)
+print("Reasoning      :", config.REASONING_EFFORT or "off (REASONING_EFFORT is empty)")
 
 if base and key.startswith("sk-"):
     print("\nWARNING: Azure endpoint with an sk- key. Use the Azure key from 'Keys and Endpoint'.")

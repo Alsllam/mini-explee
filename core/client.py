@@ -137,6 +137,7 @@ def _log_call(task, model, response, started, attempts, error=None) -> None:
     """Append one JSON line describing the call to config.LOG_FILE."""
     usage = getattr(response, "usage", None)
     details = getattr(usage, "input_tokens_details", None)
+    out_details = getattr(usage, "output_tokens_details", None)
     record = {
         "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "task": task,
@@ -145,6 +146,9 @@ def _log_call(task, model, response, started, attempts, error=None) -> None:
         "input_tokens": getattr(usage, "input_tokens", None),
         "cached_tokens": getattr(details, "cached_tokens", None),
         "output_tokens": getattr(usage, "output_tokens", None),
+        # Reasoning models "think" before answering (lesson 2.6). Those hidden
+        # tokens are part of output_tokens and are billed as output.
+        "reasoning_tokens": getattr(out_details, "reasoning_tokens", None),
         "latency_ms": round((time.monotonic() - started) * 1000),
         "attempts": attempts,
         "error": type(error).__name__ if error else None,

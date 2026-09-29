@@ -33,6 +33,11 @@ OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL") or None
 # Azure OpenAI. Agents check this before offering them.
 IS_AZURE = bool(OPENAI_BASE_URL and "azure" in OPENAI_BASE_URL.lower())
 
+# How hard a reasoning model thinks before answering (lesson 2.6):
+# low | medium | high. Leave EMPTY if MODEL_REASONING is not a reasoning model
+# (e.g. gpt-4o-mini), because other models reject the "reasoning" parameter.
+REASONING_EFFORT = os.getenv("REASONING_EFFORT", "medium").strip() or None
+
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "4"))
 
 # Every API call is appended here as one JSON line (see core/client.py).

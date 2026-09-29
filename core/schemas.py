@@ -51,3 +51,46 @@ class CompanyProfile(BaseModel):
     confidence: Literal["high", "medium", "low"] = Field(
         description="low if the page had little text or was mostly images/scripts."
     )
+
+
+# --- Step 2: ideal customer profile -----------------------------------------
+
+class ICPSegment(BaseModel):
+    """One group of companies worth selling to - output of agents/icp.py."""
+
+    name: str = Field(description="Short label, 2-5 words, e.g. 'Saudi retail banks'.")
+    description: str = Field(description="One or two sentences: who they are and why they buy.")
+    industries: list[str] = Field(description="1-3 industries.")
+    company_size: str = Field(description="Size range in employees, e.g. '500-5,000 employees'.")
+    regions: list[str] = Field(description="Countries or regions, e.g. 'Saudi Arabia', 'GCC'.")
+    buyer_roles: list[str] = Field(
+        description="2-4 job titles who would buy or champion the product, e.g. 'Head of CX'."
+    )
+    pain_points: list[str] = Field(description="2-4 problems these buyers have that the product solves.")
+    why_fit: list[str] = Field(
+        description="2-4 reasons, each tied to a fact in the company profile. Name the field, "
+        "e.g. 'named_customers includes Al-Rajhi Bank'."
+    )
+    signals: list[str] = Field(
+        description="2-4 signs visible from outside that a company belongs here, "
+        "e.g. 'active Arabic social media accounts', 'hiring CX managers'."
+    )
+    disqualifiers: list[str] = Field(description="1-3 signs a company is NOT a fit.")
+    priority: Literal["high", "medium", "low"] = Field(
+        description="high = strongest evidence in the profile and easiest to win."
+    )
+
+
+class ICPReport(BaseModel):
+    """The full answer of the ICP agent, first proposal or after feedback."""
+
+    segments: list[ICPSegment] = Field(description="2-3 segments, most promising first.")
+    assumptions: list[str] = Field(
+        description="Things you assumed that the profile does not state. Empty list if none."
+    )
+    questions_for_user: list[str] = Field(
+        description="1-3 questions whose answers would sharpen the segments."
+    )
+    change_summary: str = Field(
+        description="'Initial proposal' the first time; after feedback, what you changed and why."
+    )
