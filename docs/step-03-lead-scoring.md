@@ -103,6 +103,8 @@ MODEL_BATCH=gpt-4o-mini-batch
 python -m scripts.check_env
 ```
 
+> **انتبه:** `MODEL_BATCH` يأخذ **اسم النشر** (كلمات قصيرة مثل `gpt-4o-mini-batch`)، **وليس المفتاح**. المفتاح مكانه الوحيد `OPENAI_API_KEY`. الكود يرفض أي قيمة تشبه مفتاحاً في أسطر `MODEL_*` دون أن يطبعها، لكن إن حدث الخطأ وظهر المفتاح في أي مكان، أعد توليده من بوابة Azure.
+
 ### 5. جرّب ملف الدفعة دون إرسال (مجاناً)
 
 ```powershell
@@ -333,6 +335,7 @@ PRICE_OUTPUT_PER_M=0.60
 
 | ما تراه | السبب | الحل |
 | --- | --- | --- |
+| `ValueError: MODEL_BATCH in .env looks like an API KEY` | وضعت المفتاح في سطر اسم النشر | ضع **اسم النشر** (مثل `gpt-4o-mini-batch`). وإن ظهر المفتاح في أي مكان (شاشة، صورة، ملف)، **أعد توليده فوراً** من Keys and Endpoint |
 | `FileNotFoundError ... Run step 2 first` | لا يوجد `icp_lucidya.com.json` | شغّل الخطوة 2 |
 | `ValueError: ... Global Batch deployment` | Azure بلا `MODEL_BATCH` | أنشئ نشر Global Batch (خطوة التشغيل 4) |
 | `BadRequestError` عند إنشاء الدفعة يذكر `model` أو `deployment` | `MODEL_BATCH` نشر عادي، أو اسم خاطئ | تأكد أن نوع النشر Global Batch |

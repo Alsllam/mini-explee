@@ -40,11 +40,12 @@ else:
     ok = "ok" if tavily.startswith("tvly-") else "WARNING: Tavily keys start with tvly-"
     print(f"Tavily key     : {tavily[:5]}*** ({len(tavily)} chars) {ok}")
 
+HIDDEN = "HIDDEN - this looks like an API KEY, not a deployment name! Fix .env"
 for task, model in config.MODELS.items():
-    print(f"Model [{task:9}]:", model)
+    print(f"Model [{task:9}]:", HIDDEN if config.looks_like_secret(model) else model)
 print("Reasoning      :", config.REASONING_EFFORT or "off (REASONING_EFFORT is empty)")
 if config.MODEL_BATCH:
-    print("Batch model    :", config.MODEL_BATCH)
+    print("Batch model    :", HIDDEN if config.looks_like_secret(config.MODEL_BATCH) else config.MODEL_BATCH)
 elif config.IS_AZURE:
     print("Batch model    : not set (needed on Azure for step 3 --mode batch: a Global Batch deployment)")
 else:

@@ -157,7 +157,9 @@ def batch_model() -> str:
             "Foundry and set MODEL_BATCH=<its deployment name> in .env "
             "(see docs/step-03-lead-scoring.md)."
         )
-    return config.MODEL_BATCH or config.model_for("fast")
+    if config.MODEL_BATCH:
+        return config.checked_name("MODEL_BATCH", config.MODEL_BATCH)
+    return config.model_for("fast")
 
 
 def write_batch_file(leads: list[dict], icp: ICPReport, path: str | Path, cache_key: str | None = None) -> Path:

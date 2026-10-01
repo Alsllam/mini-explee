@@ -49,8 +49,35 @@ MAX_RETRIES = int(os.getenv("MAX_RETRIES", "4"))
 LOG_FILE = os.getenv("LOG_FILE", "logs/calls.jsonl")
 
 
+def looks_like_secret(value: str | None) -> bool:
+    """True if a value meant to be a model/deployment NAME looks like a key.
+
+    Deployment names are short and readable ("gpt-4o-mini-batch"). Keys are long
+    random strings. A key pasted into MODEL_* would be printed on screen, logged,
+    and written into batch files - so we refuse it before any of that happens.
+    """
+    if not value:
+        return False
+    secrets = {os.getenv("OPENAI_API_KEY") or "", os.getenv("TAVILY_API_KEY") or ""} - {""}
+    if value in secrets or value.startswith(("sk-", "tvly-")):
+        return True
+    return len(value) >= 32 and value.isalnum()  # long, no hyphens: not a typical name
+
+
+def checked_name(env_var: str, value: str) -> str:
+    """Return value, or stop with a message that never shows the value itself."""
+    if looks_like_secret(value):
+        raise ValueError(
+            f"{env_var} in .env looks like an API KEY, not a model/deployment name. "
+            "The value is hidden here on purpose. Put the deployment NAME there "
+            "(e.g. gpt-4o-mini-batch). If a key was shown or shared anywhere, "
+            "regenerate it in the Azure portal (Keys and Endpoint)."
+        )
+    return value
+
+
 def model_for(task: str) -> str:
     """Return the model name for a task kind: 'fast', 'smart' or 'reasoning'."""
     if task not in MODELS:
         raise ValueError(f"Unknown task kind {task!r}. Use one of: {', '.join(MODELS)}")
-    return MODELS[task]
+    return checked_name(f"MODEL_{task.upper()}", MODELS[task])

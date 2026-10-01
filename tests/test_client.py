@@ -137,3 +137,22 @@ def test_base_url_from_config_reaches_client(monkeypatch):
     assert str(client.base_url) == azure
 
     monkeypatch.setattr(core_client, "_client", None)  # don't leak into other tests
+
+
+def test_secret_in_model_setting_is_refused_without_showing_it(monkeypatch):
+    fake_key = "jKbM0djrnsxzXnf1L6ETtzWmawqkZziaX7NmYCJ5O9azLqC9i35bXs5LcKmYnwXGVzBxco4piNarYnSQD9e9"
+    monkeypatch.setenv("OPENAI_API_KEY", fake_key)
+    monkeypatch.setitem(config.MODELS, "fast", fake_key)
+
+    with pytest.raises(ValueError) as err:
+        config.model_for("fast")
+    assert "MODEL_FAST" in str(err.value)
+    assert fake_key not in str(err.value)  # never echo the secret
+    assert fake_key[:6] not in str(err.value)
+
+
+def test_normal_deployment_names_pass():
+    for name in ["gpt-4o-mini", "gpt-4o-mini-batch", "o1-mini", "gpt35", "gpt-5.4-nano", "vision"]:
+        assert not config.looks_like_secret(name)
+    assert config.looks_like_secret("sk-abc123")
+    assert config.looks_like_secret("tvly-abc123")
