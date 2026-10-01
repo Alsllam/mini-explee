@@ -141,3 +141,32 @@ class LeadScore(BaseModel):
     reasons: list[str]
     missing_info: list[str]
     recommendation: Literal["contact", "nurture", "skip"]
+
+
+# --- Step 4: email writer (RAG) --------------------------------------------------
+
+class Claim(BaseModel):
+    """One factual statement about the sender, tied to a retrieved passage."""
+
+    text: str = Field(description="The claim as it appears in the email body.")
+    source_id: str = Field(description="id of the SOURCE passage that supports it, e.g. 'p2-c1'.")
+    quote: str = Field(
+        description="Words copied EXACTLY from that passage that support the claim, 5-25 words."
+    )
+
+
+class EmailDraft(BaseModel):
+    """What the writer model returns. Code adds the signature and opt-out line."""
+
+    subject: str = Field(description="Under 8 words. Specific to the lead, no clickbait, no ALL CAPS.")
+    body: str = Field(
+        description="Plain text, 70-130 words, in English. Greeting, why we are writing to them, "
+        "one or two claims from the SOURCES, one clear question. No signature, no opt-out line."
+    )
+    claims: list[Claim] = Field(
+        description="Every factual statement in the body about the sender company (its product, "
+        "customers, numbers). Each must come from a SOURCE passage. Empty list if none."
+    )
+    personalization: list[str] = Field(
+        description="Which lead fields you used to tailor the email, e.g. 'industry: Banking'."
+    )

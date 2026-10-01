@@ -44,6 +44,8 @@ HIDDEN = "HIDDEN - this looks like an API KEY, not a deployment name! Fix .env"
 for task, model in config.MODELS.items():
     print(f"Model [{task:9}]:", HIDDEN if config.looks_like_secret(model) else model)
 print("Reasoning      :", config.REASONING_EFFORT or "off (REASONING_EFFORT is empty)")
+print("Embeddings     :", HIDDEN if config.looks_like_secret(config.MODEL_EMBED) else config.MODEL_EMBED)
+print("Moderation     :", "Azure built-in content filter" if config.IS_AZURE else "OpenAI Moderations API")
 if config.MODEL_BATCH:
     print("Batch model    :", HIDDEN if config.looks_like_secret(config.MODEL_BATCH) else config.MODEL_BATCH)
 elif config.IS_AZURE:
