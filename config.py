@@ -43,6 +43,10 @@ REASONING_EFFORT = os.getenv("REASONING_EFFORT", "medium").strip() or None
 # On OpenAI you can leave it empty: the "fast" model is used.
 MODEL_BATCH = os.getenv("MODEL_BATCH", "").strip() or None
 
+# Embeddings for the knowledge base / RAG (step 4). On Azure: the deployment
+# NAME of an embedding model, e.g. text-embedding-3-small.
+MODEL_EMBED = os.getenv("MODEL_EMBED", "text-embedding-3-small").strip()
+
 MAX_RETRIES = int(os.getenv("MAX_RETRIES", "4"))
 
 # Every API call is appended here as one JSON line (see core/client.py).

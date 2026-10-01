@@ -4,6 +4,7 @@
 # Runtime output
 logs/
 data/output/
+data/kb/
 
 # Python
 __pycache__/
