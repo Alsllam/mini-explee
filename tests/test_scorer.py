@@ -27,9 +27,21 @@ LEADS = [
 ]
 
 
-def score_json(lead_id, score, segment="Saudi retail banks", rec="contact"):
-    return json.dumps({"lead_id": lead_id, "segment": segment, "fit_score": score,
-                       "reasons": ["industry: Banking"], "missing_info": [], "recommendation": rec})
+def assessment(lead_id, industry=0, region=0, size=0, signals=0, segment="Saudi retail banks",
+               disqualifier=""):
+    return json.dumps({"lead_id": lead_id, "segment": segment, "industry_points": industry,
+                       "region_points": region, "size_points": size, "signals_points": signals,
+                       "disqualifier": disqualifier, "reasons": ["industry: Banking is a segment industry"],
+                       "missing_info": []})
+
+
+def score_json(lead_id, score, segment="Saudi retail banks"):
+    """An assessment whose points add up to `score` (filled in rubric order)."""
+    left, points = score, {}
+    for name, top in [("industry", 35), ("region", 25), ("size", 20), ("signals", 20)]:
+        points[name] = min(top, left)
+        left -= points[name]
+    return assessment(lead_id, segment=segment, **points)
 
 
 @pytest.fixture(autouse=True)
@@ -68,10 +80,36 @@ def test_no_cache_key_on_azure(monkeypatch):
     assert "prompt_cache_key" not in body
 
 
-def test_parse_score_clamps_and_fixes_recommendation():
-    s = scorer.parse_score(score_json("WRONG", 140, rec="skip"), "L001")
-    assert s.lead_id == "L001" and s.fit_score == 100 and s.recommendation == "contact"
-    assert scorer.parse_score(score_json("L1", 55, rec="contact"), "L1").recommendation == "nurture"
+def test_code_adds_points_and_sets_recommendation():
+    s = scorer.parse_score(assessment("WRONG", 35, 25, 10, 7), "L001")
+    assert s.lead_id == "L001"
+    assert s.fit_score == 77 and s.recommendation == "contact"
+    assert (s.industry_points, s.region_points, s.size_points, s.signals_points) == (35, 25, 10, 7)
+    assert scorer.parse_score(assessment("L1", 20, 25, 10), "L1").recommendation == "nurture"
+
+
+def test_each_criterion_is_clamped_to_its_maximum():
+    s = scorer.parse_score(assessment("L1", 99, 99, 99, 99), "L1")
+    assert s.fit_score == 100
+    assert (s.industry_points, s.region_points, s.size_points, s.signals_points) == (35, 25, 20, 20)
+    assert scorer.parse_score(assessment("L1", -5, 0, 0, 0), "L1").fit_score == 0
+
+
+def test_disqualifier_caps_score_at_20():
+    s = scorer.parse_score(assessment("L1", 35, 25, 20, 0, disqualifier="No Arabic customers"), "L1")
+    assert s.fit_score == 20 and s.recommendation == "skip"
+    assert s.disqualifier == "No Arabic customers"
+
+
+def test_no_segment_caps_score_below_20():
+    s = scorer.parse_score(assessment("L1", 30, 25, 0, 0, segment="none"), "L1")
+    assert s.fit_score == 19 and s.segment == "none"
+
+
+def test_model_schema_has_points_but_no_total():
+    props = scorer.text_format()["format"]["schema"]["properties"]
+    assert {"industry_points", "region_points", "size_points", "signals_points"} <= set(props)
+    assert "fit_score" not in props and "recommendation" not in props
 
 
 # --- direct mode -------------------------------------------------------------
@@ -99,7 +137,33 @@ def test_score_direct_keeps_order_and_sums_usage():
     assert scores[1].recommendation == "skip"
     assert usage.requests == 2 and usage.input_tokens == 4000 and usage.cached_tokens == 3584
     assert fake.calls[0]["model"] == config.model_for("fast")
-    assert fake.calls[0]["text"]["format"]["name"] == "LeadScore"
+    assert fake.calls[0]["text"]["format"]["name"] == "LeadAssessment"
+
+
+def test_first_request_runs_alone_to_warm_the_cache():
+    """Cache warm-up: no other request may start before the first one finished."""
+    import threading
+    import time
+
+    events, lock = [], threading.Lock()
+    base = FakeDirect()
+
+    def create(**params):
+        lead_id = params["input"].split("lead_id: ")[1].split("\n")[0]
+        with lock:
+            events.append(("start", lead_id))
+        time.sleep(0.02)
+        result = base._create(**params)
+        with lock:
+            events.append(("end", lead_id))
+        return result
+
+    base.responses.create = create
+    leads = [dict(LEADS[0], lead_id=f"L{i:03d}") for i in range(1, 7)]
+    scores, _ = scorer.score_direct(leads, icp_report(), workers=4, client=base)
+
+    assert events[:2] == [("start", "L001"), ("end", "L001")]
+    assert [s.lead_id for s in scores] == [lead["lead_id"] for lead in leads]
 
 
 # --- batch mode --------------------------------------------------------------
@@ -236,6 +300,7 @@ def test_script_direct(project, monkeypatch, capsys):
     assert rows[0]["lead_id"] == "L001" and rows[0]["recommendation"] == "contact"
     printed = capsys.readouterr().out
     assert "1 contact, 0 nurture, 1 skip" in printed and "Batch API" in printed
+    assert "Distinct scores" in printed and "industry: Banking" in printed
 
 
 def test_script_batch_submit_then_check(project, monkeypatch, capsys):
