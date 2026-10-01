@@ -258,3 +258,13 @@ def test_script_batch_dry_run_submits_nothing(project, monkeypatch):
     run_script(monkeypatch, "--mode", "batch", "--dry-run")
     assert (project / "batch_input_acme.example.jsonl").is_file()
     assert fake.uploaded == [] and fake.created == []
+
+
+def test_batch_refuses_a_key_in_model_batch(tmp_path, monkeypatch):
+    secret = "jKbM0djrnsxzXnf1L6ETtzWmawqkZziaX7NmYCJ5O9azLqC9i35bXs5LcKmYnwXGVzBxco4piNarYnSQD9e9"
+    monkeypatch.setattr(config, "IS_AZURE", True)
+    monkeypatch.setattr(config, "MODEL_BATCH", secret)
+    with pytest.raises(ValueError, match="MODEL_BATCH") as err:
+        scorer.write_batch_file(LEADS, icp_report(), tmp_path / "in.jsonl")
+    assert secret not in str(err.value)
+    assert not (tmp_path / "in.jsonl").exists()  # nothing written to disk
