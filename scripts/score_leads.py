@@ -47,9 +47,17 @@ def summary(scores, usage, model, batch):
     for segment, n in by_segment.most_common():
         print(f"  {n:3} worth pursuing in: {segment}")
 
-    print("\nTop 5:")
+    print("\nTop 5   (points: industry/region/size/signals)")
     for s in sorted(scores, key=lambda s: s.fit_score, reverse=True)[:5]:
-        print(f"  {s.fit_score:3}  {s.lead_id}  {s.segment}  - {s.reasons[0] if s.reasons else ''}")
+        parts = f"{s.industry_points}/{s.region_points}/{s.size_points}/{s.signals_points}"
+        print(f"  {s.fit_score:3}  {s.lead_id}  [{parts:>11}]  {s.segment}")
+        for reason in s.reasons[:2]:
+            print(f"                          - {reason}")
+        if s.disqualifier:
+            print(f"                          ! disqualifier: {s.disqualifier}")
+
+    distinct = len({s.fit_score for s in scores})
+    print(f"\nDistinct scores: {distinct} among {len(scores)} leads (more = finer ranking)")
 
     print(f"\nTokens: {usage.input_tokens} in ({usage.cached_tokens} cached = {usage.cache_share:.0%}) "
           f"/ {usage.output_tokens} out, {usage.requests} requests")

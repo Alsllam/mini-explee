@@ -98,18 +98,46 @@ class ICPReport(BaseModel):
 
 # --- Step 3: lead scoring ----------------------------------------------------
 
-class LeadScore(BaseModel):
-    """How well one lead fits the ICP - output of agents/scorer.py."""
+class LeadAssessment(BaseModel):
+    """What the MODEL returns for one lead: a judgement per criterion, no total.
+
+    Models are good at judging ("is Banking one of the segment's industries?")
+    and weak at arithmetic. So the model gives points per criterion and the
+    code adds them up (agents/scorer.py: to_score).
+    """
 
     lead_id: str = Field(description="Copy the lead_id exactly as given.")
     segment: str = Field(
         description="Name of the best-matching ICP segment, copied exactly, or 'none'."
     )
-    fit_score: int = Field(description="0-100, using the scoring rubric.")
-    reasons: list[str] = Field(description="1-3 short reasons, each naming a lead field.")
+    industry_points: int = Field(description="0-35: how well the lead's industry matches the segment.")
+    region_points: int = Field(description="0-25: how well the lead's country matches the segment's regions.")
+    size_points: int = Field(description="0-20: how well the employee count fits the segment's company_size.")
+    signals_points: int = Field(description="0-20: how well the lead's signals match the segment's signals.")
+    disqualifier: str = Field(
+        description="The segment disqualifier that applies to this lead, quoted. Empty string if none."
+    )
+    reasons: list[str] = Field(
+        description="1-3 reasons, each 'field: what you saw and why it matters', e.g. "
+        "'industry: Banking is one of the segment industries' or "
+        "'signals: no Arabic social media, a disqualifier'."
+    )
     missing_info: list[str] = Field(
         description="Facts that would change the score if known. Empty list if none."
     )
-    recommendation: Literal["contact", "nurture", "skip"] = Field(
-        description="contact: score >= 70. nurture: 40-69. skip: below 40."
-    )
+
+
+class LeadScore(BaseModel):
+    """The final result for one lead, computed by CODE from a LeadAssessment."""
+
+    lead_id: str
+    segment: str
+    fit_score: int  # sum of the four points, capped by the rules
+    industry_points: int
+    region_points: int
+    size_points: int
+    signals_points: int
+    disqualifier: str
+    reasons: list[str]
+    missing_info: list[str]
+    recommendation: Literal["contact", "nurture", "skip"]

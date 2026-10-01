@@ -13,7 +13,8 @@ Course lessons used here:
   2.4 Prompt caching    - the long ICP sits at the START of every request, identical
                           each time, so the provider can reuse it (cached_tokens)
   2.5 Structured Outputs- a strict JSON schema, written by hand into the request
-                          because a batch file can't carry a Pydantic class
+                          because a batch file can't carry a Pydantic class.
+                          The model returns points per criterion; code adds them.
   4.4 Batch API         - upload JSONL, create a batch, poll, download results
 """
 from __future__ import annotations
@@ -30,23 +31,29 @@ from openai.lib._pydantic import to_strict_json_schema
 import config
 from core.client import ask, get_client
 from core.cost import Usage
-from core.schemas import ICPReport, LeadScore
+from core.schemas import ICPReport, LeadAssessment, LeadScore
 
-RUBRIC = """You score sales leads for the company whose ideal customer profile (ICP)
-is given below. For each lead, pick the ONE best-matching segment and score the fit.
+RUBRIC = """You assess sales leads for the company whose ideal customer profile (ICP)
+is given below. For each lead, pick the ONE best-matching segment, then judge
+each criterion separately. Give points per criterion only: do NOT add them up,
+the total is computed by code.
 
-Scoring rubric (add the points, maximum 100):
-- Industry matches the segment's industries ............ 0-35
-- Country/region matches the segment's regions ......... 0-25
-- Employee count fits the segment's company_size ........ 0-20
-- Lead signals match the segment's signals .............. 0-20
-Then: if any segment disqualifier applies, the score is at most 20.
-If no segment fits at all, segment = "none" and score below 20.
+Criteria and maximum points:
+- industry_points  (0-35): the lead's industry vs the segment's industries.
+  35 = listed exactly, about 20 = closely related, 0 = unrelated.
+- region_points    (0-25): the lead's country vs the segment's regions.
+  25 = listed, about 10 = same wider region (e.g. GCC), 0 = outside.
+- size_points      (0-20): the lead's employees vs the segment's company_size.
+  20 = inside the range, about 10 = near it, 0 = far from it.
+- signals_points   (0-20): the lead's signals vs the segment's signals.
+  About 7 per matching signal, up to 20. 0 if the lead lists no signals.
+- disqualifier: quote a segment disqualifier that the lead's fields show,
+  otherwise an empty string.
+If no segment fits at all, segment = "none".
 
 Rules:
 - Use ONLY the lead fields given. Do not assume facts about the company.
-- In reasons, name the field you used (industry, country, employees, signals).
-- recommendation: contact if score >= 70, nurture if 40-69, skip if below 40.
+- Use the whole range: different leads should rarely get identical points.
 
 IDEAL CUSTOMER PROFILE:
 """
@@ -90,8 +97,8 @@ def text_format() -> dict:
     return {
         "format": {
             "type": "json_schema",
-            "name": "LeadScore",
-            "schema": to_strict_json_schema(LeadScore),
+            "name": "LeadAssessment",
+            "schema": to_strict_json_schema(LeadAssessment),
             "strict": True,
         }
     }
@@ -115,13 +122,41 @@ def build_request(lead: dict, icp: ICPReport, model: str, cache_key: str | None 
     return body
 
 
+# Maximum points per criterion, and the caps applied by code.
+MAX_POINTS = {"industry_points": 35, "region_points": 25, "size_points": 20, "signals_points": 20}
+DISQUALIFIED_CAP = 20   # a disqualifier applies -> at most 20
+NO_SEGMENT_CAP = 19     # no segment fits -> below 20
+
+
+def to_score(a: LeadAssessment, lead_id: str) -> LeadScore:
+    """The arithmetic, done by code: clamp each criterion, add, apply the caps.
+
+    The model judges; the code counts. The same assessment always gives the
+    same score, and the recommendation can never contradict the score.
+    """
+    points = {name: max(0, min(top, getattr(a, name))) for name, top in MAX_POINTS.items()}
+    total = sum(points.values())
+    disqualifier = a.disqualifier.strip()
+    if disqualifier:
+        total = min(total, DISQUALIFIED_CAP)
+    segment = a.segment.strip() or "none"
+    if segment.lower() == "none":
+        total = min(total, NO_SEGMENT_CAP)
+    recommendation = "contact" if total >= 70 else "nurture" if total >= 40 else "skip"
+    return LeadScore(
+        lead_id=lead_id,  # trust our id, not the model's copy of it
+        segment=segment,
+        fit_score=total,
+        disqualifier=disqualifier,
+        reasons=a.reasons,
+        missing_info=a.missing_info,
+        recommendation=recommendation,
+        **points,
+    )
+
+
 def parse_score(text: str, lead_id: str) -> LeadScore:
-    score = LeadScore.model_validate_json(text)
-    score.lead_id = lead_id  # trust our id, not the model's copy of it
-    score.fit_score = max(0, min(100, score.fit_score))
-    # Recompute the recommendation from the score so the two never disagree.
-    score.recommendation = "contact" if score.fit_score >= 70 else "nurture" if score.fit_score >= 40 else "skip"
-    return score
+    return to_score(LeadAssessment.model_validate_json(text), lead_id)
 
 
 # --- direct mode ---------------------------------------------------------------
@@ -143,9 +178,15 @@ def score_direct(leads: list[dict], icp: ICPReport, *, workers: int = 4, cache_k
             usage.add(u.input_tokens, getattr(details, "cached_tokens", 0), u.output_tokens)
         return parse_score(response.output_text, lead["lead_id"])
 
+    if not leads:
+        return [], usage
+    # Cache warm-up (lesson 2.4): the FIRST request runs alone. It fills the
+    # cache with the shared prefix, so every parallel request after it can
+    # reuse it. Started all at once, the first few would all miss the cache.
+    first = one(leads[0])
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        scores = list(pool.map(one, leads))
-    return scores, usage
+        rest = list(pool.map(one, leads[1:]))
+    return [first, *rest], usage
 
 
 # --- batch mode (lesson 4.4) ---------------------------------------------------
@@ -238,10 +279,14 @@ def save_scores(scores: list[LeadScore], leads: list[dict], path: str | Path) ->
     with path.open("w", newline="", encoding="utf-8-sig") as f:  # -sig: Excel shows Arabic correctly
         writer = csv.writer(f)
         writer.writerow(["lead_id", "company", "industry", "country", "employees",
-                         "fit_score", "recommendation", "segment", "reasons", "missing_info"])
+                         "fit_score", "recommendation", "segment",
+                         "industry_pts", "region_pts", "size_pts", "signals_pts", "disqualifier",
+                         "reasons", "missing_info"])
         for s in rows:
             lead = by_id.get(s.lead_id, {})
             writer.writerow([s.lead_id, lead.get("company", ""), lead.get("industry", ""),
                              lead.get("country", ""), lead.get("employees", ""), s.fit_score,
-                             s.recommendation, s.segment, " | ".join(s.reasons), " | ".join(s.missing_info)])
+                             s.recommendation, s.segment,
+                             s.industry_points, s.region_points, s.size_points, s.signals_points,
+                             s.disqualifier, " | ".join(s.reasons), " | ".join(s.missing_info)])
     return path

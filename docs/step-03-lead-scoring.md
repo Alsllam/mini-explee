@@ -312,6 +312,84 @@ PRICE_OUTPUT_PER_M=0.60
 
 ---
 
+## تحسينات بعد أول تشغيل حقيقي (الخطوة 3ب)
+
+أول تشغيل على 20 شركة (مباشر ودفعة) أعطى نتائج صحيحة، لكنه كشف ثلاث مشاكل. هذا الجدول يلخص الأرقام الحقيقية:
+
+| ما رأيناه | الرقم | السبب |
+| --- | --- | --- |
+| التخزين المؤقت | 72% | أول 4 طلبات أُرسلت **معاً** والذاكرة فارغة: 16 طلباً × 1,800 رمز مخزّن = 28,800 بالضبط |
+| الأسباب | `- industry` | طلبنا "اذكر الحقل"، فذكر **اسم الحقل فقط** |
+| الدرجات | 85، 85، 85، 85، 80 | النموذج يعطي أرقاماً "مستديرة" حين يُطلب منه **مجموع** |
+
+### 1) تسخين الذاكرة المؤقتة
+
+```python
+first = one(leads[0])
+with ThreadPoolExecutor(max_workers=workers) as pool:
+    rest = list(pool.map(one, leads[1:]))
+return [first, *rest], usage
+```
+
+الطلب الأول يُرسل **وحده** وننتظر انتهاءه، فيملأ الذاكرة المؤقتة بالبادئة. بعدها تنطلق الطلبات المتوازية وكلها تجد البادئة جاهزة. ثمن ذلك ثانية أو ثانيتان إضافيتان، ومقابله نسبة تخزين أعلى (المتوقع 85%+ مع 20 شركة، و95%+ مع 200).
+
+**في وضع الدفعة لا نتحكم في الترتيب**؛ المزوّد ينفّذ الطلبات كما يشاء. ومع ذلك رأينا 76% مخزّناً، لأن الدفعة تُنفَّذ على مراحل لا كلها في لحظة واحدة.
+
+### 2) النموذج يحكم، والكود يحسب
+
+بدل أن يعطي النموذج درجة واحدة، صار يعطي **نقاطاً لكل معيار** (`LeadAssessment`):
+
+```json
+{"industry_points": 35, "region_points": 25, "size_points": 10, "signals_points": 7, "disqualifier": ""}
+```
+
+والكود يجمعها ويطبّق القواعد في `to_score()`:
+
+```python
+points = {name: max(0, min(top, getattr(a, name))) for name, top in MAX_POINTS.items()}
+total = sum(points.values())
+if disqualifier:
+    total = min(total, DISQUALIFIED_CAP)
+if segment.lower() == "none":
+    total = min(total, NO_SEGMENT_CAP)
+```
+
+| | قبل | بعد |
+| --- | --- | --- |
+| من يجمع؟ | النموذج | **الكود** |
+| الحساب | قد يخطئ النموذج في الجمع | مضمون دائماً |
+| قاعدة الاستبعاد (حد 20) | النموذج "يتذكرها" أو لا | **تُطبّق دائماً** |
+| حدود كل معيار (35/25/20/20) | لا تُفحص | **تُحصر بالكود** |
+| الشفافية | رقم واحد | تعرف أين خسرت الشركة نقاطها |
+
+لاحظ أن المخطط الذي نرسله للنموذج **لا يحتوي** `fit_score` ولا `recommendation`. لو تركناهما، لملأهما النموذج ثم تجاهلناهما، فيضيع رموز إخراج بلا فائدة. والاختبار `test_model_schema_has_points_but_no_total` يتحقق من ذلك.
+
+**لماذا تتحسن الدرجات؟** حين تطلب من النموذج "درجة من 100" يميل إلى 80 و85 و90. حين تطلب "كم من 35 تستحق الصناعة؟" يحكم على سؤال أضيق وأوضح، ومجموع أربعة أحكام صغيرة أدق من حكم واحد كبير. أضفنا أيضاً في المعايير **أمثلة للنقاط الوسطى** ("about 20 = closely related") لأن النماذج بدونها تميل للطرفين: صفر أو الحد الأقصى.
+
+السكربت يطبع الآن:
+
+```
+Distinct scores: 14 among 20 leads (more = finer ranking)
+```
+
+كلما زاد هذا الرقم، كان الترتيب أدق. قارنه بالتشغيل السابق.
+
+### 3) أسباب مفيدة: المثال أوضح من الشرح
+
+```python
+reasons: list[str] = Field(
+    description="1-3 reasons, each 'field: what you saw and why it matters', e.g. "
+    "'industry: Banking is one of the segment industries' or "
+    "'signals: no Arabic social media, a disqualifier'."
+)
+```
+
+التعليمة القديمة "name the field" كانت صحيحة لكنها غامضة، فنفّذها النموذج حرفياً. **مثالان ملموسان** يحددان الشكل المطلوب أوضح من أي شرح.
+
+### ملف CSV الجديد
+
+أُضيفت أعمدة: `industry_pts` و `region_pts` و `size_pts` و `signals_pts` و `disqualifier`. في Excel يمكنك الآن الفرز حسب أي معيار، مثلاً: الشركات التي حصلت على 35 في الصناعة لكن صفراً في المنطقة، أي شركات مناسبة في دول لا نستهدفها بعد.
+
 ## الاختبارات الجديدة (`tests/test_scorer.py`)
 
 | الاختبار | ماذا يثبت |
@@ -319,7 +397,12 @@ PRICE_OUTPUT_PER_M=0.60
 | `test_prefix_is_identical_and_lead_comes_last` | البادئة متطابقة بين الطلبات، والشركة في النهاية: شرط التخزين |
 | `test_text_format_is_a_strict_json_schema` | المخطط صارم وقابل للكتابة في ملف JSON |
 | `test_no_cache_key_on_azure` | لا نرسل `prompt_cache_key` إلى Azure |
-| `test_parse_score_clamps_and_fixes_recommendation` | الدرجة 140 تصبح 100، والتوصية تتبع الدرجة |
+| `test_code_adds_points_and_sets_recommendation` | الكود يجمع النقاط ويحدد التوصية |
+| `test_each_criterion_is_clamped_to_its_maximum` | 99 في الصناعة تصبح 35 |
+| `test_disqualifier_caps_score_at_20` | الاستبعاد يحد الدرجة عند 20 دائماً |
+| `test_no_segment_caps_score_below_20` | `none` تحد الدرجة عند 19 |
+| `test_model_schema_has_points_but_no_total` | النموذج لا يُطلب منه المجموع |
+| `test_first_request_runs_alone_to_warm_the_cache` | الطلب الأول ينتهي قبل أن يبدأ أي طلب آخر |
 | `test_score_direct_keeps_order_and_sums_usage` | التوازي لا يخلط الترتيب، والرموز والمخزّن تُجمع صحيحاً |
 | `test_batch_file_has_one_request_per_line` | سطر لكل شركة، و `custom_id` و `url` صحيحان |
 | `test_azure_batch_needs_its_own_deployment` | على Azure بلا `MODEL_BATCH`: رسالة واضحة |
