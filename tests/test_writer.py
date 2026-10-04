@@ -82,6 +82,15 @@ def test_code_adds_signature_and_opt_out():
     assert text.endswith(writer.OPT_OUT)
 
 
+def test_empty_sender_name_falls_back_to_team(monkeypatch):
+    # .env.example ships "SENDER_NAME=" (empty): the signature must not lose the name.
+    monkeypatch.setenv("SENDER_NAME", "")
+    text = writer.assemble(draft(), sample_profile())
+    assert "Best regards,\nThe Acme Logistics team\nAcme Logistics" in text
+    monkeypatch.setenv("SENDER_NAME", "Sara Ahmed")
+    assert "Best regards,\nSara Ahmed\n" in writer.assemble(draft(), sample_profile())
+
+
 # --- the request (caching + RAG) ---------------------------------------------------
 
 def test_prefix_is_the_same_for_every_lead_and_sources_go_last():
