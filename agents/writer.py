@@ -165,7 +165,9 @@ def check_draft(draft: EmailDraft, sources: list[tuple[Chunk, float]], lead: dic
 
 def assemble(draft: EmailDraft, profile: CompanyProfile) -> str:
     """Code, not the model, adds the parts that must always be there and be right."""
-    sender = os.getenv("SENDER_NAME", f"The {profile.name} team")
+    # `or`, not a getenv default: "SENDER_NAME=" in .env gives "" (set but empty),
+    # which would leave a blank line where the name should be.
+    sender = (os.getenv("SENDER_NAME") or "").strip() or f"The {profile.name} team"
     return (f"Subject: {draft.subject}\n\n{draft.body.strip()}\n\n"
             f"Best regards,\n{sender}\n{profile.name}\n\n{OPT_OUT}")
 
