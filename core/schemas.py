@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 
 class CompanyProfile(BaseModel):
-    """What a company sells and to whom - output of agents/researcher.py."""
+    """What a company sells and to whom - output of pipeline/researcher.py."""
 
     name: str = Field(description="Company name as written on the website.")
     website: str = Field(description="The URL that was analyzed.")
@@ -56,7 +56,7 @@ class CompanyProfile(BaseModel):
 # --- Step 2: ideal customer profile -----------------------------------------
 
 class ICPSegment(BaseModel):
-    """One group of companies worth selling to - output of agents/icp.py."""
+    """One group of companies worth selling to - output of pipeline/icp.py."""
 
     name: str = Field(description="Short label, 2-5 words, e.g. 'Saudi retail banks'.")
     description: str = Field(description="One or two sentences: who they are and why they buy.")
@@ -103,7 +103,7 @@ class LeadAssessment(BaseModel):
 
     Models are good at judging ("is Banking one of the segment's industries?")
     and weak at arithmetic. So the model gives points per criterion and the
-    code adds them up (agents/scorer.py: to_score).
+    code adds them up (pipeline/scorer.py: to_score).
     """
 
     lead_id: str = Field(description="Copy the lead_id exactly as given.")
@@ -201,3 +201,32 @@ class EmailReview(BaseModel):
         description="Which LEAD SIGNALS the email body refers to, each copied exactly from the list. "
         "Empty list if none."
     )
+
+
+# --- Step 5: reply handler (Agents SDK) ---------------------------------------------
+
+ReplyCategory = Literal["interested", "question", "not_now", "not_interested",
+                        "wrong_person", "out_of_office", "opt_out", "other"]
+NextAction = Literal["schedule_meeting", "send_reply", "follow_up_later", "close", "hand_to_human"]
+
+
+class ReplyDecision(BaseModel):
+    """What the reply agents return for ONE incoming reply. Code then updates the
+    CRM file and the do-not-contact list from it; agents never write anything."""
+
+    lead_id: str = Field(description="Copy the lead_id exactly as given.")
+    category: ReplyCategory = Field(description="What kind of reply this is.")
+    summary: str = Field(description="One sentence: what the lead said, in English.")
+    next_action: NextAction = Field(description="What should happen next.")
+    follow_up_date: str = Field(
+        description="YYYY-MM-DD when next_action is follow_up_later, otherwise an empty string."
+    )
+    draft_reply: str = Field(
+        description="The English reply to send (a draft for a human), or an empty string if we "
+        "should not reply. No signature: code adds it."
+    )
+    sources: list[str] = Field(
+        description="Ids of the knowledge passages (e.g. 'p2-c1') the reply relies on. Empty list if none."
+    )
+    needs_human: bool = Field(description="True if a person should look at this before anything happens.")
+    reason: str = Field(description="One sentence: why this category and this next action.")

@@ -7,7 +7,7 @@ Run from the project root, after steps 1-3 and build_kb:
     python -m scripts.write_emails lucidya.com --scores data/output/leads_scored_lucidya.com_batch.csv
     python -m scripts.write_emails lucidya.com --no-review     # step 4 only, to compare
 
-Step 4.1: each draft is judged by a second model (agents/reviewer.py) and fixed
+Step 4.1: each draft is judged by a second model (pipeline/reviewer.py) and fixed
 once if needed (EMAIL_REVISIONS in .env, default 1).
 """
 import argparse
@@ -15,9 +15,10 @@ import time
 from pathlib import Path
 
 import config
-from agents.icp import load_profile
-from agents.scorer import load_icp, load_leads
-from agents.writer import load_contacts, save_outbox, write_email
+from pipeline.icp import load_profile
+from pipeline.replies import load_do_not_contact
+from pipeline.scorer import load_icp, load_leads
+from pipeline.writer import load_contacts, save_outbox, write_email
 from core.cost import Usage, estimate_usd
 from core.kb import KnowledgeBase
 
@@ -39,7 +40,12 @@ if not scores.is_file():
 profile = load_profile(OUT / f"company_{domain}.json")
 icp = load_icp(OUT / f"icp_{domain}.json")
 kb = KnowledgeBase.load(domain)
-contacts = load_contacts(scores, load_leads(args.leads), args.limit)
+# Step 5 keeps a do-not-contact list; anyone on it never gets another email.
+dnc_path = OUT / "do_not_contact.csv"
+blocked = load_do_not_contact(dnc_path) if dnc_path.is_file() else set()
+contacts = load_contacts(scores, load_leads(args.leads), args.limit, exclude=blocked)
+if blocked:
+    print(f"Skipping {len(blocked)} leads on the do-not-contact list ({dnc_path})")
 print(f"Sender: {profile.name} | knowledge base: {len(kb.chunks)} passages | writing {len(contacts)} emails")
 review = not args.no_review
 print(f"Writer: {config.model_for('smart')} | reviewer: {config.model_for('fast') if review else 'off'}"

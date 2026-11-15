@@ -1,4 +1,4 @@
-"""Tests for agents/writer.py and scripts/write_emails.py. No API, no network.
+"""Tests for pipeline/writer.py and scripts/write_emails.py. No API, no network.
 
 Run:  pytest -v
 """
@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 import config
-from agents import writer
+from pipeline import writer
 from core import client as core_client
 from core import kb
 from core.moderation import ModerationResult
@@ -226,7 +226,7 @@ def test_script_writes_outbox_and_never_sends(tmp_path, monkeypatch):
 
 # --- step 4.1: the reviewer -----------------------------------------------------------
 
-from agents import reviewer  # noqa: E402
+from pipeline import reviewer  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

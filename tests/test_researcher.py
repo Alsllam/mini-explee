@@ -9,7 +9,7 @@ import pytest
 from openai.lib._pydantic import to_strict_json_schema
 
 import config
-from agents import researcher
+from pipeline import researcher
 from core.schemas import CompanyProfile
 from core.web import normalize_url, parse_html
 
@@ -91,7 +91,7 @@ def test_normalize_url_adds_https():
     assert normalize_url("http://acme.com") == "http://acme.com"
 
 
-# --- agents/researcher.py --------------------------------------------------
+# --- pipeline/researcher.py --------------------------------------------------
 
 def test_analyze_sends_structured_request():
     fake = FakeClient()

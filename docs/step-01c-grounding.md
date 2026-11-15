@@ -208,7 +208,7 @@ if not where:
 
 `GroundingReport` يجمع النتائج، مع خصائص مختصرة: `unverified_evidence` و `unverified_competitors` و `ok`. أما `to_dict()` فتحوّله إلى JSON للحفظ.
 
-### `agents/researcher.py`
+### `pipeline/researcher.py`
 
 `analyze_company()` صارت تعيد كائناً واحداً بدل ثلاث قيم:
 

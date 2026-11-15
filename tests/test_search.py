@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 import config
-from agents import researcher
+from pipeline import researcher
 from core import search as search_mod
 from core.web import parse_html
 from tests.test_researcher import SAMPLE_HTML, sample_profile
@@ -63,7 +63,7 @@ def test_format_results_numbers_sources():
     assert "No results" in search_mod.format_results("q", [])
 
 
-# --- the loop in agents/researcher.py --------------------------------------
+# --- the loop in pipeline/researcher.py --------------------------------------
 
 def function_call(query, call_id="call_1"):
     return SimpleNamespace(type="function_call", call_id=call_id, name="search_web",

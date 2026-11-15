@@ -53,6 +53,14 @@ elif config.IS_AZURE:
 else:
     print("Batch model    : same as fast")
 
+try:
+    from importlib.metadata import version
+    sdk = f"openai-agents {version('openai-agents')}"
+except Exception:
+    sdk = "NOT INSTALLED (needed for step 5): pip install -r requirements.txt"
+tracing = os.getenv("AGENTS_TRACING", "0").strip() == "1" and not config.IS_AZURE
+print("Agents SDK     :", sdk, "| tracing:", "on" if tracing else "off")
+
 if base and key.startswith("sk-"):
     print("\nWARNING: Azure endpoint with an sk- key. Use the Azure key from 'Keys and Endpoint'.")
 if base is None and key and not key.startswith("sk-"):

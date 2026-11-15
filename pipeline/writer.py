@@ -13,7 +13,7 @@ For each lead:
   4. Check     : code verifies each quote is in its source, numbers come from
                  sources, length is sane, and moderation passes (lesson 5.2)
   5. Review    : a second model judges each claim against its quote, finds
-                 unlisted claims and unused signals (agents/reviewer.py, step 4.1)
+                 unlisted claims and unused signals (pipeline/reviewer.py, step 4.1)
   6. Revise    : if anything was found, the writer gets the list and tries
                  ONCE more; the second draft is checked and reviewed again
   7. Assemble  : code adds the signature and the opt-out line
@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agents.reviewer import review_email, review_issues
+from pipeline.reviewer import review_email, review_issues
 from core.client import ask
 from core.cost import Usage
 from core.grounding import normalize, word_match_share
@@ -95,11 +95,16 @@ class WrittenEmail:
 
 # --- inputs ---------------------------------------------------------------------
 
-def load_contacts(scores_csv: str | Path, leads: list[dict], limit: int | None = None) -> list[tuple[dict, dict]]:
-    """(lead, score row) for every lead scored 'contact', best first."""
+def load_contacts(scores_csv: str | Path, leads: list[dict], limit: int | None = None,
+                  exclude: set[str] | frozenset = frozenset()) -> list[tuple[dict, dict]]:
+    """(lead, score row) for every lead scored 'contact', best first.
+
+    exclude: lead ids that must never get an email (step 5's do-not-contact list).
+    """
     by_id = {lead["lead_id"]: lead for lead in leads}
     with Path(scores_csv).open(encoding="utf-8-sig") as f:
-        rows = [r for r in csv.DictReader(f) if r["recommendation"] == "contact" and r["lead_id"] in by_id]
+        rows = [r for r in csv.DictReader(f) if r["recommendation"] == "contact" and r["lead_id"] in by_id
+                and r["lead_id"] not in exclude]
     rows.sort(key=lambda r: int(r["fit_score"]), reverse=True)
     pairs = [(by_id[r["lead_id"]], r) for r in rows]
     return pairs[:limit] if limit else pairs
