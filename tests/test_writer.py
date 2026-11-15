@@ -15,7 +15,7 @@ from agents import writer
 from core import client as core_client
 from core import kb
 from core.moderation import ModerationResult
-from core.schemas import Claim, EmailDraft
+from core.schemas import Claim, ClaimVerdict, EmailDraft, EmailReview
 from tests.test_icp import report as icp_report
 from tests.test_kb import FakeEmbeddings
 from tests.test_researcher import sample_profile
@@ -120,19 +120,44 @@ def test_load_contacts_keeps_only_contact_best_first(tmp_path):
 
 # --- one email end to end with fakes ----------------------------------------------
 
+def clean_review(n_claims=1, signals=("Active Arabic social media accounts",)):
+    return EmailReview(claims=[ClaimVerdict(claim_no=i, verdict="supported", reason="the quote says it")
+                               for i in range(1, n_claims + 1)],
+                       unlisted_claims=[], signals_used=list(signals))
+
+
+def _usage():
+    return SimpleNamespace(input_tokens=1500, output_tokens=300,
+                           input_tokens_details=SimpleNamespace(cached_tokens=1024),
+                           output_tokens_details=SimpleNamespace(reasoning_tokens=0))
+
+
 class FakeWriterClient(FakeEmbeddings):
-    def __init__(self, drafts):
+    """parse() answers the writer from `drafts` and the reviewer from `reviews`
+    (a clean review when none is queued); create() answers query translation."""
+
+    def __init__(self, drafts, reviews=()):
         super().__init__()
         self.drafts = list(drafts)
-        self.parse_calls = []
-        self.responses = SimpleNamespace(parse=self._parse)
+        self.reviews = list(reviews)
+        self.parse_calls, self.create_calls = [], []
+        self.responses = SimpleNamespace(parse=self._parse, create=self._create_text)
 
     def _parse(self, **params):
         self.parse_calls.append(params)
-        usage = SimpleNamespace(input_tokens=1500, output_tokens=300,
-                                input_tokens_details=SimpleNamespace(cached_tokens=1024),
-                                output_tokens_details=SimpleNamespace(reasoning_tokens=0))
-        return SimpleNamespace(id="r", output=[], status="completed", output_parsed=self.drafts.pop(0), usage=usage)
+        if params["text_format"] is EmailReview:
+            parsed = self.reviews.pop(0) if self.reviews else clean_review()
+        else:
+            parsed = self.drafts.pop(0)
+        return SimpleNamespace(id="r", output=[], status="completed", output_parsed=parsed, usage=_usage())
+
+    def _create_text(self, **params):
+        self.create_calls.append(params)
+        return SimpleNamespace(id="t", output=[], status="completed", output_text="بنوك تجربة العملاء",
+                               usage=_usage())
+
+    def writer_calls(self):
+        return [c for c in self.parse_calls if c["text_format"] is EmailDraft]
 
 
 def kb_with_chunks():
@@ -146,9 +171,9 @@ def test_write_email_retrieves_writes_checks_moderates():
     email, _ = writer.write_email(LEAD, {"segment": "Saudi retail banks"}, sample_profile(), icp_report(),
                                   kb_with_chunks(), client=fake, moderate_fn=clean)
 
-    assert email.status == "ready" and email.issues == []
+    assert email.status == "ready" and email.issues == [] and email.revisions == 0
     assert email.sources[0][0].id == "p1-c0"                      # banking passage retrieved first
-    call = fake.parse_calls[0]
+    call = fake.writer_calls()[0]
     assert call["text_format"] is EmailDraft and call["model"] == config.model_for("smart")
     assert "SOURCES:" in call["input"] and "p1-c0" in call["input"]
 
@@ -193,6 +218,124 @@ def test_script_writes_outbox_and_never_sends(tmp_path, monkeypatch):
 
     txt = (out / "outbox" / "L001.txt").read_text(encoding="utf-8")
     assert txt.startswith(writer.SIMULATION_NOTE)
+    assert "Review (second model):" in txt and "claim 1: supported" in txt
     assert "Status: ready" in txt and writer.OPT_OUT in txt and "[p1-c0]" in txt
     rows = list(csv.DictReader((out / "outbox" / "index.csv").open(encoding="utf-8-sig")))
     assert rows[0]["status"] == "ready"
+
+
+# --- step 4.1: the reviewer -----------------------------------------------------------
+
+from agents import reviewer  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def fresh_query_cache():
+    writer._QUERY_CACHE.clear()
+    yield
+    writer._QUERY_CACHE.clear()
+
+
+def two_claims():
+    return [Claim(text="Acme helps banks track 95% of customer mentions", source_id="p1-c0",
+                  quote="track 95% of customer mentions in Arabic dialects in real time"),
+            Claim(text="Acme's AI answers every review for retail chains", source_id="p2-c0",
+                  quote="Retail chains use Acme for reviews")]
+
+
+def test_review_input_numbers_claims_and_lists_signals():
+    text = reviewer.review_input(draft(claims=two_claims()), SOURCES, LEAD)
+    assert "1. Acme helps banks" in text and "2. Acme's AI answers" in text
+    assert "source: p2-c0" in text and "[p1-c0]" in text
+    assert text.endswith("- Active Arabic social media accounts")
+
+
+def test_code_turns_verdicts_into_issues():
+    review = EmailReview(
+        claims=[ClaimVerdict(claim_no=1, verdict="supported", reason="ok"),
+                ClaimVerdict(claim_no=2, verdict="partial", reason="'AI answers every review' is not in the quote")],
+        unlisted_claims=["We can help you streamline this process."],
+        signals_used=["Active Arabic social media accounts"])
+    issues = reviewer.review_issues(review, draft(claims=two_claims()), LEAD)
+    assert issues == [
+        "claim 2 says more than its quote [p2-c0]: 'AI answers every review' is not in the quote",
+        "unlisted claim about the sender: We can help you streamline this process.",
+    ]
+
+
+def test_missing_verdict_unsupported_claim_and_unused_signals_are_issues():
+    review = EmailReview(claims=[ClaimVerdict(claim_no=1, verdict="unsupported", reason="a market need")],
+                         unlisted_claims=[], signals_used=[])
+    issues = reviewer.review_issues(review, draft(claims=two_claims()), LEAD)
+    assert issues[0].startswith("claim 1 not supported by its quote [p1-c0]")
+    assert issues[1] == "reviewer gave no verdict for claim 2 [p2-c0]"
+    assert issues[2].startswith("no lead signal used")
+
+
+def test_a_signal_the_judge_invented_does_not_count():
+    review = clean_review(signals=["Opened 40 new branches"])     # not in the lead's data
+    issues = reviewer.review_issues(review, draft(), LEAD)
+    assert issues == ["no lead signal used; strongest candidates: Active Arabic social media accounts"]
+
+
+def test_reviewer_uses_fast_model_and_temperature_zero():
+    fake = FakeWriterClient([], reviews=[clean_review()])
+    review, _ = reviewer.review_email(draft(), SOURCES, LEAD, client=fake)
+    call = fake.parse_calls[0]
+    assert call["model"] == config.model_for("fast") and call["temperature"] == 0
+    assert call["instructions"] == reviewer.JUDGE and review.claims[0].verdict == "supported"
+
+
+def write(fake, **kw):
+    clean = lambda text: ModerationResult(False, "test")
+    return writer.write_email(LEAD, {"segment": "Saudi retail banks"}, sample_profile(), icp_report(),
+                              kb_with_chunks(), client=fake, moderate_fn=clean, **kw)
+
+
+def test_review_problems_send_the_draft_back_once_then_it_is_ready():
+    bad = EmailReview(claims=[ClaimVerdict(claim_no=1, verdict="partial", reason="adds 'AI-powered'")],
+                      unlisted_claims=[], signals_used=["Active Arabic social media accounts"])
+    fake = FakeWriterClient([draft(), draft()], reviews=[bad, clean_review()])
+    email, usage = write(fake)
+
+    assert email.status == "ready" and email.revisions == 1
+    assert email.first_issues == ["claim 1 says more than its quote [p1-c0]: adds 'AI-powered'"]
+    second = fake.writer_calls()[1]["input"]
+    assert "REVIEW OF YOUR PREVIOUS DRAFT" in second and "adds 'AI-powered'" in second
+    assert usage["smart"].requests == 2                     # two drafts
+    assert usage["fast"].requests == 3                      # translation + two reviews
+
+
+def test_still_wrong_after_one_revision_goes_to_review():
+    bad = EmailReview(claims=[ClaimVerdict(claim_no=1, verdict="unsupported", reason="x")],
+                      unlisted_claims=[], signals_used=["Active Arabic social media accounts"])
+    fake = FakeWriterClient([draft(), draft()], reviews=[bad, bad])
+    email, _ = write(fake)
+    assert email.status == "needs_review" and email.revisions == 1   # EMAIL_REVISIONS=1: no third try
+    assert len(fake.writer_calls()) == 2
+
+
+def test_no_review_means_step_4_behaviour():
+    fake = FakeWriterClient([draft()])
+    email, usage = write(fake, review=False)
+    assert email.review is None and email.status == "ready"
+    assert not [c for c in fake.parse_calls if c["text_format"] is EmailReview]
+
+
+def test_arabic_site_is_searched_in_both_languages_and_translated_once():
+    fake = FakeWriterClient([])
+    profile = sample_profile()                                  # language "mixed"
+    for _ in range(2):
+        hits = writer.retrieve(kb_with_chunks(), LEAD, icp_report().segments[0], profile, client=fake)
+    assert len(fake.create_calls) == 1                          # cached the second time
+    assert "Arabic" in fake.create_calls[0]["instructions"]
+    assert [c.id for c, _ in hits] == ["p1-c0", "p2-c0"]        # merged, best first, no duplicates
+
+    english = profile.model_copy(update={"language": "en"})
+    writer.retrieve(kb_with_chunks(), LEAD, icp_report().segments[0], english, client=fake)
+    assert len(fake.create_calls) == 1                          # English site: no translation
+
+
+def test_rules_name_unlisted_claims_and_the_strongest_signal():
+    assert "Every sentence that says what the SENDER does" in writer.RULES
+    assert "strongest buying signal" in writer.RULES

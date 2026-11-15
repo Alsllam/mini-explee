@@ -170,3 +170,34 @@ class EmailDraft(BaseModel):
     personalization: list[str] = Field(
         description="Which lead fields you used to tailor the email, e.g. 'industry: Banking'."
     )
+
+
+# --- Step 4.1: the reviewer (LLM as a judge) ----------------------------------------
+
+class ClaimVerdict(BaseModel):
+    """The judge's verdict on ONE listed claim: does its quote prove it?"""
+
+    claim_no: int = Field(description="The claim's number as given in CLAIMS (1, 2, ...).")
+    verdict: Literal["supported", "partial", "unsupported"] = Field(
+        description="supported = the quote alone proves the whole claim. "
+        "partial = the quote proves part of it, but the claim adds something the quote does not say "
+        "(an adjective like 'AI-powered', a capability, a benefit, a result). "
+        "unsupported = the quote says something else, e.g. a market need instead of what the sender does."
+    )
+    reason: str = Field(description="One sentence: what the quote says and what the claim adds, if anything.")
+
+
+class EmailReview(BaseModel):
+    """What the reviewer model returns. Code turns it into issues and the status."""
+
+    claims: list[ClaimVerdict] = Field(description="Exactly one verdict per claim in CLAIMS, in order.")
+    unlisted_claims: list[str] = Field(
+        description="Sentences of the EMAIL BODY, copied exactly, that state a fact, ability or promise "
+        "about the SENDER (what it does, can do, its customers or results) and are NOT covered by any "
+        "claim in CLAIMS. Not claims: statements about the lead, general statements about the industry, "
+        "the greeting and the closing question. Empty list if none."
+    )
+    signals_used: list[str] = Field(
+        description="Which LEAD SIGNALS the email body refers to, each copied exactly from the list. "
+        "Empty list if none."
+    )
