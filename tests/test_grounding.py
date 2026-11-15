@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 import config
-from agents import researcher
+from pipeline import researcher
 from core.grounding import check_grounding, normalize, strip_quotes
 from core.web import parse_html
 from tests.test_researcher import SAMPLE_HTML, sample_profile

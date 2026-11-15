@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
-from agents.researcher import analyze_company
+from pipeline.researcher import analyze_company
 from core.web import normalize_url
 
 parser = argparse.ArgumentParser(description="Build a company profile from its website.")

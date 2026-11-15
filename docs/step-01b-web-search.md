@@ -162,7 +162,7 @@ MAX_CONTENT_CHARS = 700
 
 `format_results()` ترقّم النتائج وتضع الرابط تحت كل عنوان، فيسهل على النموذج أن ينقل الروابط الصحيحة إلى حقل `sources`.
 
-### 3) الحلقة: `_run_search_loop()` في `agents/researcher.py`
+### 3) الحلقة: `_run_search_loop()` في `pipeline/researcher.py`
 
 ```python
 for round_no in range(MAX_SEARCH_ROUNDS + 1):

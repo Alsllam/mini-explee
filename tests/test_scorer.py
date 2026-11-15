@@ -1,4 +1,4 @@
-"""Tests for step 3 (agents/scorer.py, scripts/score_leads.py, scripts/make_leads.py).
+"""Tests for step 3 (pipeline/scorer.py, scripts/score_leads.py, scripts/make_leads.py).
 No API, no network: fake clients stand in for OpenAI / Azure.
 
 Run:  pytest -v
@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 import config
-from agents import scorer
+from pipeline import scorer
 from core import client as core_client
 from core.cost import Usage, estimate_usd
 from tests.test_icp import report as icp_report

@@ -1,4 +1,4 @@
-"""Tests for step 2 (agents/icp.py, scripts/define_icp.py). No API, no network.
+"""Tests for step 2 (pipeline/icp.py, scripts/define_icp.py). No API, no network.
 
 Run:  pytest -v
 """
@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 import config
-from agents import icp
+from pipeline import icp
 from core import client as core_client
 from core.schemas import ICPReport, ICPSegment
 from tests.test_researcher import sample_profile
@@ -57,7 +57,7 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "REASONING_EFFORT", "medium")
 
 
-# --- agents/icp.py ---------------------------------------------------------
+# --- pipeline/icp.py ---------------------------------------------------------
 
 def test_propose_sends_profile_to_reasoning_model():
     fake = FakeClient(report())

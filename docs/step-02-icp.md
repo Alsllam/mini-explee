@@ -206,7 +206,7 @@ response = ask(
 
 ## شرح الكود
 
-### `agents/icp.py`
+### `pipeline/icp.py`
 
 | الدالة | دورها |
 | --- | --- |

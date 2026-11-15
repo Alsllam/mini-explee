@@ -16,10 +16,13 @@
 | 3 | تقييم العملاء: Batch API والتخزين المؤقت | 2.1، 2.4، 2.5، 4.4 | [docs/step-03-lead-scoring.md](docs/step-03-lead-scoring.md) |
 | 3ب | تحسين التقييم: النموذج يحكم والكود يحسب، وتسخين الذاكرة | 2.4، 2.5 | [docs/step-03-lead-scoring.md](docs/step-03-lead-scoring.md) |
 | 4 | كاتب الرسائل مع RAG والفحص | 2.4، 2.5، 5.2 + RAG | [docs/step-04-writer-rag.md](docs/step-04-writer-rag.md) |
+| 4.1 | المراجِع: نموذج ثانٍ يحكم على الادعاءات، تصحيح مرة واحدة، بحث بلغتين | 2.5 + التقييم | [docs/step-04-1-reviewer.md](docs/step-04-1-reviewer.md) |
 | 4ب | الضبط الدقيق وصورة الحملة | 3.1، 4.1 | قريباً |
-| 5 | معالج الردود والمنسّق | 4.2، 4.6 | قريباً |
+| 5 | معالج الردود: ثلاثة وكلاء بـ Agents SDK، تسليم وحراس | 4.6، 4.2، 2.5 | [docs/step-05-replies.md](docs/step-05-replies.md) |
 | 6 | الصوت ولوحة التكلفة | 3.3–3.5، 4.5 | قريباً |
 | 7 | مقارنة الأطر: LangGraph و CrewAI و AutoGen | 4.6 وما بعده | لاحقاً |
+
+> **ملاحظة (الخطوة 5):** مجلد الوكلاء اسمه الآن `pipeline/` بدل `agents/`، لأن مكتبة Agents SDK تُستورد باسم `agents`. التفاصيل في [docs/step-05-replies.md](docs/step-05-replies.md).
 
 ## التشغيل السريع
 

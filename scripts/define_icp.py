@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 import config
-from agents.icp import load_profile, propose_icp, refine_icp
+from pipeline.icp import load_profile, propose_icp, refine_icp
 from core.schemas import ICPReport
 
 OUT_DIR = Path("data/output")

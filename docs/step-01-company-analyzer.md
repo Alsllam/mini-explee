@@ -28,7 +28,7 @@
 كيف تمر البيانات:
 
 1. `core/web.py` يحمّل الصفحة وينظّفها من الأكواد ويحوّلها إلى نص قصير.
-2. `agents/researcher.py` يبني رسالة فيها النص، ومعه لقطة شاشة إن أعطيته واحدة.
+2. `pipeline/researcher.py` يبني رسالة فيها النص، ومعه لقطة شاشة إن أعطيته واحدة.
 3. `ask()` ترسلها مع المخطط `CompanyProfile`، فيُجبَر النموذج على الرد بهذا الشكل بالضبط.
 4. السكربت يحفظ النتيجة في `data/output/company_<domain>.json`.
 
@@ -271,7 +271,7 @@ resp.encoding = resp.apparent_encoding or resp.encoding
 
 `as_prompt()` تجمع الأجزاء بعناوين واضحة (`TITLE:` و `HEADINGS:` و `PAGE TEXT:`). النموذج يفهم النص المُعنوَن أفضل من كتلة واحدة.
 
-### `agents/researcher.py` — الوكيل
+### `pipeline/researcher.py` — الوكيل
 
 التعليمات، وهي أهم جزء في أي وكيل:
 

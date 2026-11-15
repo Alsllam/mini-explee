@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import config
-from agents.scorer import (TERMINAL, batch_model, load_icp, load_leads, read_batch_output, save_scores,
+from pipeline.scorer import (TERMINAL, batch_model, load_icp, load_leads, read_batch_output, save_scores,
                            score_direct, submit_batch, write_batch_file)
 from core.client import get_client
 from core.cost import estimate_usd
